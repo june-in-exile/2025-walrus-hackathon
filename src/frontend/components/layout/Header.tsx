@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { Menu } from 'lucide-react';
 import { useState } from 'react';
 import { WalletButton } from '@/src/frontend/components/wallet/WalletButton';
@@ -27,9 +28,13 @@ export function Header() {
         {/* Logo and Title */}
         <div className="flex items-center gap-6">
           <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground font-bold">
-              M&A
-            </div>
+            <Image
+              src="/M&A Logo.png"
+              alt="M&A Logo"
+              width={32}
+              height={32}
+              className="rounded-md"
+            />
             <span className="hidden font-bold sm:inline-block">
               Earn-out Platform
             </span>

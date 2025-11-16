@@ -1,3 +1,5 @@
+import Image from 'next/image';
+
 export function Footer() {
   return (
     <footer className="border-t bg-background">
@@ -5,9 +7,13 @@ export function Footer() {
         {/* Left section */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded bg-primary text-primary-foreground text-xs font-bold">
-              M&A
-            </div>
+            <Image
+              src="/M&A Logo.png"
+              alt="M&A Logo"
+              width={24}
+              height={24}
+              className="rounded"
+            />
             <span className="text-sm font-semibold">Earn-out Platform</span>
           </div>
           <p className="text-sm text-muted-foreground max-w-md">

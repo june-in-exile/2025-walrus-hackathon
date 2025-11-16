@@ -1,0 +1,37 @@
+components:
+  schemas:
+    HealthCheckResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          description: Health status of the API
+          example: ok
+        timestamp:
+          type: string
+          format: date-time
+          description: Current server timestamp in ISO 8601 format
+          example: "2025-01-16T10:30:00.000Z"
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+        - statusCode
+      properties:
+        error:
+          type: string
+          description: Error type
+          example: Bad Request
+        message:
+          type: string
+          description: Human-readable error message
+          example: Invalid input parameters
+        statusCode:
+          type: integer
+          description: HTTP status code
+          example: 400

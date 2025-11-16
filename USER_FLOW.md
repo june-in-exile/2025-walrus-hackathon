@@ -104,7 +104,7 @@ Earn-out 期間開始後，Buyer 的財務團隊會定期進入這個 deal 的�
 
 ---
 
-## 5. 賣方視角：監控資料提報是否完整（看得到 blob，看不到內容）
+## 5. 賣方視角：監控資料提報是否完整
 
 Seller 登入後，進入同一個 deal，看到的是相同的 Data Timeline，但在這個頁面上只能 **讀取**，不能新增 / 修改 blob 關聯。
 
@@ -150,7 +150,7 @@ Auditor 登入後，進入同一個 deal 的「KPI Review」頁面，可以看�
 * 每個 period 的 KPI 提案（例如：2026 – Revenue = 11.3M）
 * 此 KPI 相關聯的 Walrus blob 列表（例如該年度 revenue journal 的各個 batch）
 
-當 auditor 想要抽樣檔案時，流程是：
+當 auditor 想要檢驗所有檔案時，流程是：
 
 1. 在 UI 點選某個 blob
 2. 前端用 Seal SDK 根據當前 Sui address + 這個 blob 所屬的 Deal / Period，向 Seal Key Servers 請求解密 key

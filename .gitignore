@@ -40,10 +40,41 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Claude Code
+# AI Assistants & Development Tools
 .claude
+.cursor
+.gemini
+.taskmaster
 CLAUDE.md
+GEMINI.md
+.mcp.json
+
+# GitHub workflows (if not committing)
+.github
 
 # OpenAPI generated clients
 /generated
 *.generated.*
+
+# Logs
+logs
+*.log
+dev-debug.log
+# Dependency directories
+node_modules/
+# Environment variables
+.env
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+# OS specific
+
+# Task files
+# tasks.json
+# tasks/ 
+*.todo

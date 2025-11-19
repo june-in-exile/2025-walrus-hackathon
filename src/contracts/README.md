@@ -5,7 +5,7 @@ This repository contains the smart contract for an M&A Earnout mechanism secured
 ## 📋 Deployment Information
 
 * **Network:** Sui Testnet
-* **Package ID:** `0x0870f322afea4ff897e855b74d200d14893c701b50678a8a9151ebf2f56d4848`
+* **Package ID:** ``
 * **Modules:** `earnout`, `whitelist`
 
 ---
@@ -29,6 +29,33 @@ In the CLI examples provided below, you will see variables like `$PACKAGE_ID`, `
 
 ## 🚀 Contract Interaction Flow
 
+### 0. Deploy Smart Contracts
+
+```bash
+# switch to testnet
+$ sui client switch --env testnet
+
+# (optional) check your wallet 
+sui client faucet
+
+# build the contract
+$ cd contracts
+$ sui move build
+
+# deploy to testnet
+sui client publish --gas-budget 100000000 --skip-dependency-verification
+
+```
+
+If you deployed successfully, you can see the PackageID and ObjectID
+![alt text](image.png)
+
+You can use export to let terminal remember the 
+```bash
+$ export PACKAGE_ID=0xb2752ee42f5d063dcda98497df71a79e54d37908bfd8d9e23257cd618f92bce6 \
+OBJECT_ID=0x228f84944579efb3df1f5abf7442a8f79eb5611f8b06154115e8de03904a8a37
+```
+
 ### 1. Create Deal
 Initializes the deal object and sets up the whitelist.
 
@@ -44,6 +71,8 @@ sui client call --package $PACKAGE_ID --module earnout --function create_deal \
 --gas-budget 10000000
 ```
 Note: Capture the Deal Object ID from the Created Objects field in the transaction response.
+
+![alt text](image-1.png)
 
 ### 2. Add Period
 Adds a financial period (e.g., "Q1-2025") to the deal.

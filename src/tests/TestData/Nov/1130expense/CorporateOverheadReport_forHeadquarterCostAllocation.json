@@ -1,0 +1,20 @@
+{
+  "reportTitle": "Corporate Overhead Report",
+  "currency": "USD",
+  "costItems": [
+    {
+      "description_en": "Executive & Administrative Salaries",
+      "amount": 1500000
+    },
+    {
+      "description_en": "Headquarters Rent",
+      "amount": 400000
+    },
+    {
+      "description_en": "Utilities & Internet Fees",
+      "amount": 150000
+    }
+  ],
+  "totalOverheadCost": 2050000
+}
+

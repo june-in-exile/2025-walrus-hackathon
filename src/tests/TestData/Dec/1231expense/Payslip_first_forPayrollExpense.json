@@ -1,0 +1,44 @@
+{
+  "payslipId": "PS-12-2025-MS",
+  "employeeDetails": {
+    "employeeName": "Mark Smith",
+    "employeeId": "E2005",
+    "department": "Production"
+  },
+  "paymentPeriod": {
+    "payDate": "2026-01-05",
+    "payPeriodStart": "2025-12-01",
+    "payPeriodEnd": "2025-12-31"
+  },
+  "earnings": [
+    {
+      "description": "Base Hourly Wages (80 hours)",
+      "amount": 3200.00
+    },
+    {
+      "description": "Overtime Pay (10 hours)",
+      "amount": 600.00
+    },
+    {
+      "description": "Shift Differential",
+      "amount": 150.00
+    }
+  ],
+  "grossPay": 3950.00,
+  "deductions": [
+    {
+      "description": "State Income Tax Withholding",
+      "amount": 300.00
+    },
+    {
+      "description": "401(k) Retirement Contribution",
+      "amount": 197.50
+    },
+    {
+      "description": "Union Dues",
+      "amount": 50.00
+    }
+  ],
+  "totalDeductions": 547.50,
+  "netPay": 3402.50
+}

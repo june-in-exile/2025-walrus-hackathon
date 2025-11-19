@@ -1,0 +1,44 @@
+{
+  "firstPayslipId": "PS-11-2025-LC",
+  "employeeDetails": {
+    "employeeName": "Lily Chen",
+    "employeeId": "E3012",
+    "department": "Marketing"
+  },
+  "paymentPeriod": {
+    "payDate": "2025-12-05",
+    "payPeriodStart": "2025-11-01",
+    "payPeriodEnd": "2025-11-30"
+  },
+  "earnings": [
+    {
+      "description": "Base Salary",
+      "amount": 12000.00
+    },
+    {
+      "description": "Housing Allowance",
+      "amount": 2000.00
+    },
+    {
+      "description": "Performance Bonus (Q3)",
+      "amount": 5000.00
+    }
+  ],
+  "grossPay": 19000.00,
+  "deductions": [
+    {
+      "description": "Federal Income Tax Withholding",
+      "amount": 4500.00
+    },
+    {
+      "description": "Medicare Tax",
+      "amount": 275.50
+    },
+    {
+      "description": "Company Loan Repayment",
+      "amount": 500.00
+    }
+  ],
+  "totalDeductions": 5275.50,
+  "netPay": 13724.50
+}

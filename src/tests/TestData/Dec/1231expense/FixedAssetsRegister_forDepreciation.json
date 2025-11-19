@@ -1,0 +1,45 @@
+{
+  "reportTitle": "Fixed Asset Register - Machinery and Equipment",
+  "reportDate": "2025-12-31",
+  "currency": "USD",
+  "assetList": [
+    {
+      "assetID": "MACH-001A",
+      "assetName": "High-Speed CNC Machining Center (Machine A)",
+      "originalCost": 500000.0,
+      "acquisitionDate": "2023-01-01",
+      "usefulLife_years": 10,
+      "depreciationMethod": "Straight-Line",
+      "residualValue": 50000.0,
+      "accumulatedDepreciation": 135000.00,
+      "netBookValue": 365000.00
+    },
+    {
+      "assetID": "MACH-002B",
+      "assetName": "Fully Automated Packaging Line (Machine B)",
+      "originalCost": 350000.0,
+      "acquisitionDate": "2024-07-01",
+      "usefulLife_years": 8,
+      "depreciationMethod": "Declining-Balance (Double)",
+      "residualValue": 35000.0,
+      "accumulatedDepreciation": 121764.36,
+      "netBookValue": 228235.64
+    },
+    {
+      "assetID": "OFFICE-015",
+      "assetName": "Headquarters Server Rack",
+      "originalCost": 40000.0,
+      "acquisitionDate": "2025-01-01",
+      "usefulLife_years": 5,
+      "depreciationMethod": "Straight-Line",
+      "residualValue": 0.0,
+      "accumulatedDepreciation": 8000.00,
+      "netBookValue": 32000.00
+    }
+  ],
+  "summary": {
+    "totalOriginalCost": 890000.0,
+    "totalAccumulatedDepreciation": 264764.36,
+    "totalNetBookValue": 625235.64
+  }
+}

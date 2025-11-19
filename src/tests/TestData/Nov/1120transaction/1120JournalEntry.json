@@ -1,0 +1,25 @@
+{
+  "journalEntryId": "JE-2025-1120-001",
+  "entryDate": "2025-11-20",
+  "description": "To record sales revenue and related sales tax for Invoice INV-2025-0889",
+  "transactionType": "Sales",
+  "debits": [
+    {
+      "account": "Accounts Receivable",
+      "accountCode": "1200",
+      "amount": 787500.00
+    }
+  ],
+  "credits": [
+    {
+      "account": "Sales Revenue",
+      "accountCode": "4000",
+      "amount": 750000.00
+    },
+    {
+      "account": "Sales Tax Payable",
+      "accountCode": "2300",
+      "amount": 37500.00
+    }
+  ]
+}

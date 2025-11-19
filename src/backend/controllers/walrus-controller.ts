@@ -7,6 +7,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyPersonalMessageSignature } from '@mysten/sui/verify';
+import { Transaction } from '@mysten/sui/transactions';
+import { getFullnodeUrl, SuiClient } from '@mysten/sui/client';
+import { toHex } from '@mysten/sui/utils';
 import { sealService } from '@/src/backend/services/seal-service';
 import { walrusService } from '@/src/backend/services/walrus-service';
 import { config } from '@/src/shared/config/env';
@@ -25,6 +28,74 @@ const SIGNATURE_MAX_AGE_MS = 5 * 60 * 1000;
  * Walrus Controller for file operations
  */
 export class WalrusController {
+  private suiClient: SuiClient;
+
+  constructor() {
+    this.suiClient = new SuiClient({ url: getFullnodeUrl("testnet") });
+  }
+
+  /**
+   * Build transaction bytes for registering a Walrus blob on-chain
+   *
+   * @param dealId - Deal object ID
+   * @param blobId - Walrus blob ID
+   * @param periodId - Period identifier
+   * @param dataType - Type of data stored
+   * @param size - File size in bytes
+   * @param uploaderAddress - Address of the uploader
+   * @returns Hex-encoded transaction bytes, or empty string if contract not configured
+   */
+  private async buildRegisterBlobTxBytes(
+    dealId: string,
+    blobId: string,
+    periodId: string,
+    dataType: string,
+    size: number,
+    uploaderAddress: string
+  ): Promise<string> {
+    // Check if earnout package is configured
+    if (!config.earnout.packageId) {
+      console.warn('EARNOUT_PACKAGE_ID not configured, skipping transaction generation');
+      return '';
+    }
+
+    try {
+      const tx = new Transaction();
+
+      // Call the add_walrus_blob function on the earnout module
+      // Expected function signature:
+      // entry fun add_walrus_blob(
+      //   deal: &mut Deal,
+      //   blob_id: vector<u8>,
+      //   period_id: vector<u8>,
+      //   data_type: vector<u8>,
+      //   size: u64,
+      //   ctx: &TxContext
+      // )
+      tx.moveCall({
+        target: `${config.earnout.packageId}::earnout::add_walrus_blob`,
+        arguments: [
+          tx.object(dealId),
+          tx.pure.vector('u8', Array.from(new TextEncoder().encode(blobId))),
+          tx.pure.vector('u8', Array.from(new TextEncoder().encode(periodId))),
+          tx.pure.vector('u8', Array.from(new TextEncoder().encode(dataType))),
+          tx.pure.u64(size),
+        ],
+      });
+
+      // Set sender for gas estimation
+      tx.setSender(uploaderAddress);
+
+      // Build transaction bytes (for frontend to sign)
+      const txBytes = await tx.build({ client: this.suiClient });
+
+      return toHex(txBytes);
+    } catch (error) {
+      console.error('Failed to build register blob transaction:', error);
+      return '';
+    }
+  }
+
   /**
    * Handle file upload with hybrid encryption mode
    *
@@ -184,6 +255,16 @@ export class WalrusController {
       // Upload to Walrus
       const uploadResult = await walrusService.upload(dataToUpload, metadata);
 
+      // Build transaction bytes for on-chain registration
+      const txBytes = await this.buildRegisterBlobTxBytes(
+        dealId,
+        uploadResult.blobId,
+        periodId,
+        dataType,
+        uploadResult.size,
+        userAddress
+      );
+
       // Build response
       const response: WalrusUploadResponse = {
         blobId: uploadResult.blobId,
@@ -202,7 +283,7 @@ export class WalrusController {
           action: 'register_on_chain',
           description: 'Sign transaction to register this blob on-chain',
           transaction: {
-            txBytes: '', // TODO: Generate actual transaction bytes
+            txBytes,
             description: `Register Walrus blob: ${dataType} for ${periodId}`,
           },
         },
@@ -304,8 +385,10 @@ export class WalrusController {
         );
       }
 
-      // Download from Walrus
-      const encryptedData = await walrusService.download(blobId);
+      // Download from Walrus with metadata
+      const downloadResult = await walrusService.downloadWithMetadata(blobId);
+      const encryptedData = downloadResult.data;
+      const blobMetadata = downloadResult.metadata;
 
       // Process based on decryption mode
       let dataToReturn: Buffer;
@@ -358,15 +441,38 @@ export class WalrusController {
         console.log('Ciphertext size:', dataToReturn.length, 'bytes');
       }
 
-      // Return binary data
+      // Build response headers with metadata
+      const headers: Record<string, string> = {
+        'Content-Type': blobMetadata.mimeType || 'application/octet-stream',
+        'Content-Length': dataToReturn.length.toString(),
+        'X-Blob-Id': blobId,
+        'X-Encryption-Mode': mode,
+        'X-Data-Type': blobMetadata.dataType,
+        'X-Period-Id': blobMetadata.periodId,
+        'X-Uploaded-At': blobMetadata.uploadedAt,
+        'X-Uploader-Address': blobMetadata.uploaderAddress,
+      };
+
+      // Add filename header if available
+      if (blobMetadata.filename) {
+        // RFC 5987 encoding for non-ASCII filenames
+        const encodedFilename = encodeURIComponent(blobMetadata.filename);
+        headers['Content-Disposition'] = `attachment; filename*=UTF-8''${encodedFilename}`;
+        headers['X-Filename'] = blobMetadata.filename;
+      }
+
+      // Add optional metadata headers
+      if (blobMetadata.description) {
+        headers['X-Description'] = blobMetadata.description;
+      }
+      if (blobMetadata.customDataType) {
+        headers['X-Custom-Data-Type'] = blobMetadata.customDataType;
+      }
+
+      // Return binary data with metadata headers
       return new NextResponse(dataToReturn, {
         status: 200,
-        headers: {
-          'Content-Type': 'application/octet-stream',
-          'Content-Length': dataToReturn.length.toString(),
-          'X-Blob-Id': blobId,
-          'X-Encryption-Mode': mode,
-        },
+        headers,
       });
     } catch (error) {
       console.error('Download failed:', error);

@@ -13,7 +13,7 @@ import { SealClient, SessionKey, EncryptedObject } from '@mysten/seal';
 import { getFullnodeUrl, SuiClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { Transaction } from '@mysten/sui/transactions';
-import { fromHex, toHex } from '@mysten/sui/utils';
+import { fromHex } from '@mysten/sui/utils';
 import { config, debugConfig } from '@/src/shared/config/env';
 import type {
   SealEncryptionResult,

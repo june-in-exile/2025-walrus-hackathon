@@ -220,3 +220,26 @@ export interface AccessVerificationResult {
   /** Reason if access denied */
   reason?: string;
 }
+
+/**
+ * Walrus metadata envelope format
+ *
+ * This format stores metadata alongside blob data in Walrus.
+ * Structure: [4 bytes: metadata length (uint32 BE)][metadata JSON][actual data]
+ */
+export interface WalrusMetadataEnvelope {
+  /** Version of the envelope format */
+  version: number;
+  /** Blob metadata */
+  metadata: BlobMetadata;
+}
+
+/**
+ * Result of downloading a blob with metadata
+ */
+export interface WalrusDownloadWithMetadataResult {
+  /** The actual data (decrypted or encrypted based on mode) */
+  data: Buffer;
+  /** Metadata extracted from the envelope */
+  metadata: BlobMetadata;
+}

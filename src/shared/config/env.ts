@@ -137,6 +137,16 @@ export const sealConfig = {
 };
 
 /**
+ * Earnout contract configuration
+ */
+export const earnoutConfig = {
+  /**
+   * Package ID where earnout module is deployed
+   */
+  packageId: getOptionalEnvVar('EARNOUT_PACKAGE_ID', ''),
+};
+
+/**
  * Application configuration
  */
 export const appConfig = {
@@ -188,6 +198,7 @@ export const config = {
   sui: suiConfig,
   walrus: walrusConfig,
   seal: sealConfig,
+  earnout: earnoutConfig,
   app: appConfig,
   debug: debugConfig,
 } as const;

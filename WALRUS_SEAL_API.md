@@ -164,13 +164,35 @@ X-Sui-Signature-Message: ...   # ISO timestamp that was signed
 **Success Response (200):**
 
 ```
-Content-Type: application/octet-stream
+Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
 Content-Length: 1024
+Content-Disposition: attachment; filename*=UTF-8''Q4-2024-revenue.xlsx
 X-Blob-Id: ABC123...
 X-Encryption-Mode: client_encrypted
+X-Filename: Q4-2024-revenue.xlsx
+X-Data-Type: revenue_journal
+X-Period-Id: period-2024-q4
+X-Uploaded-At: 2025-01-15T10:30:00.000Z
+X-Uploader-Address: 0x1234...abcd
+X-Description: Q4 2024 revenue journal (optional)
+X-Custom-Data-Type: inventory_report (optional, when dataType is "custom")
 
 [Binary data]
 ```
+
+**Metadata Headers:**
+
+| Header               | Description                           | Always Present |
+| -------------------- | ------------------------------------- | -------------- |
+| Content-Type         | Original file MIME type               | Yes            |
+| Content-Disposition  | Attachment with original filename     | If filename    |
+| X-Filename           | Original filename                     | If filename    |
+| X-Data-Type          | Data type (revenue_journal, etc.)     | Yes            |
+| X-Period-Id          | Period identifier                     | Yes            |
+| X-Uploaded-At        | Upload timestamp (ISO 8601)           | Yes            |
+| X-Uploader-Address   | Sui address of uploader               | Yes            |
+| X-Description        | File description                      | Optional       |
+| X-Custom-Data-Type   | Custom data type name                 | Optional       |
 
 **Error Responses:**
 
@@ -537,44 +559,38 @@ transaction: {
 
 ---
 
-### Low Priority Issues
+### ~~Low Priority Issues~~ Resolved
 
-#### 3. Blob Metadata Storage
+#### ~~3. Blob Metadata Storage~~ ✅ Fixed
 
-**Problem:** Metadata is only passed through the upload response but not persisted anywhere. When downloading, there's no way to retrieve the original metadata.
+**Solution Implemented: Walrus Metadata Envelope**
 
-**What is metadata?** Each uploaded blob has associated `BlobMetadata`:
+Metadata is now persisted alongside the blob data using a **metadata envelope format**. When uploading, metadata is prepended to the actual data. When downloading, metadata is extracted and returned in response headers.
 
-```typescript
-interface BlobMetadata {
-  filename: string;        // e.g., "Q4-2024-revenue.xlsx"
-  mimeType: string;        // e.g., "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-  description?: string;    // e.g., "Q4 2024 revenue journal with monthly breakdown"
-  periodId: string;        // e.g., "period-2024-q4"
-  encrypted: boolean;      // true
-  encryptionMode: string;  // "client_encrypted" | "server_encrypted"
-  uploadedAt: string;      // e.g., "2025-01-15T10:30:00.000Z"
-  uploaderAddress: string; // e.g., "0x1234...abcd"
-  dataType: string;        // e.g., "revenue_journal" | "ebitda_report" | "audit_report"
-  customDataType?: string; // e.g., "inventory_report" (when dataType is "custom")
-}
+**Envelope Format:**
+
+```
+[4 bytes: metadata length (uint32 BE)][metadata JSON][actual data]
 ```
 
-**Current behavior:**
-1. Upload returns metadata in response ✅
-2. Metadata is lost after response ❌
-3. Download cannot retrieve original filename, dataType, etc. ❌
+**How it works:**
 
-**Impact:**
-- Frontend cannot display file list with proper names and types
-- Cannot filter blobs by dataType or periodId
-- Cannot show upload history or audit trail
+1. **Upload**: `walrusService.upload()` automatically wraps data with metadata envelope
+2. **Download**: `walrusService.downloadWithMetadata()` extracts metadata from envelope
+3. **Response**: Controller returns metadata in HTTP headers (see [Download Response](#get-apiv1walrusdownloadblobid))
 
-**Possible solutions:**
+**Benefits:**
 
-1. **Database storage** - Store metadata in PostgreSQL/SQLite with blobId as key
-2. **On-chain storage** - Store metadata hash or full data in Sui Move contract
-3. **Walrus metadata** - Some Walrus implementations support metadata alongside blob data
+- ✅ Metadata travels with data (no separate storage needed)
+- ✅ Download response includes filename, mimeType, dataType, periodId, etc.
+- ✅ Frontend can display file list with proper names and types
+- ✅ Backward compatible (legacy blobs without envelope return raw data)
+
+**Implementation Files:**
+
+- `src/shared/types/walrus.ts` - `WalrusMetadataEnvelope` interface
+- `src/backend/services/walrus-service.ts` - `wrapWithMetadataEnvelope()`, `unwrapMetadataEnvelope()`
+- `src/backend/controllers/walrus-controller.ts` - Metadata in response headers
 
 ---
 
@@ -583,7 +599,7 @@ interface BlobMetadata {
 ### Required Configuration
 
 ```bash
-# .env.local
+# .env
 
 # Sui Configuration
 SUI_NETWORK="testnet"
@@ -639,7 +655,7 @@ TEST_CAP_ID="0x299098c9..."
 4. ~~Implement signature verification~~ ✅ Done
 5. Generate actual transaction bytes
 6. Add unit and integration tests
-7. Implement metadata persistence
+7. ~~Implement metadata persistence~~ ✅ Done (Walrus metadata envelope)
 
 ---
 

@@ -12,7 +12,7 @@ import type {
   BlobMetadata,
   UploadMetadata,
   WalrusMetadataEnvelope,
-  WalrusDownloadWithMetadataResult,
+  WalrusDownloadResult,
 } from '@/src/shared/types/walrus';
 
 // Current envelope format version
@@ -184,7 +184,7 @@ export class WalrusService {
    * @param blobId - Blob ID to download
    * @returns Downloaded data and metadata
    */
-  async downloadWithMetadata(blobId: string): Promise<WalrusDownloadWithMetadataResult> {
+  async download(blobId: string): Promise<WalrusDownloadResult> {
     try {
       if (debugConfig.walrus) {
         console.log('Downloading from Walrus with metadata via HTTP API');
@@ -282,51 +282,6 @@ export class WalrusService {
   }
 
   /**
-   * Calculate storage cost for a given size and epochs
-   * Note: Returns estimated cost based on current pricing
-   *
-   * @param size - Data size in bytes
-   * @param epochs - Number of storage epochs
-   * @returns Cost breakdown (estimated)
-   */
-  async calculateStorageCost(
-    size: number,
-    epochs: number = config.walrus.storageEpochs
-  ): Promise<{
-    storageCost: bigint;
-    writeCost: bigint;
-    totalCost: bigint;
-  }> {
-    // Estimated costs based on Walrus pricing
-    // These are placeholder values - actual costs depend on network state
-    const bytesPerUnit = 1024 * 1024; // 1 MB
-    const costPerUnitPerEpoch = BigInt(1000000); // 0.001 SUI per MB per epoch
-
-    const units = Math.ceil(size / bytesPerUnit);
-    const storageCost = BigInt(units) * costPerUnitPerEpoch * BigInt(epochs);
-    const writeCost = BigInt(units) * BigInt(100000); // 0.0001 SUI per MB write cost
-    const totalCost = storageCost + writeCost;
-
-    if (debugConfig.walrus) {
-      console.log('Storage cost estimated');
-      console.log('Size:', size, 'bytes');
-      console.log('Epochs:', epochs);
-      console.log('Total cost:', totalCost.toString(), 'MIST');
-    }
-
-    return { storageCost, writeCost, totalCost };
-  }
-
-  /**
-   * Validate blob ID format
-   */
-  private isValidBlobId(blobId: string): boolean {
-    // Walrus blob IDs are typically base64-encoded
-    // Add proper validation based on Walrus specification
-    return blobId.length > 0 && /^[A-Za-z0-9_-]+$/.test(blobId);
-  }
-
-  /**
    * Wrap data with metadata envelope
    *
    * Format: [4 bytes: metadata length (uint32 BE)][metadata JSON][actual data]
@@ -361,7 +316,7 @@ export class WalrusService {
    * @returns Extracted data and metadata
    * @throws Error if envelope is invalid
    */
-  private unwrapMetadataEnvelope(envelopedData: Buffer): WalrusDownloadWithMetadataResult {
+  private unwrapMetadataEnvelope(envelopedData: Buffer): WalrusDownloadResult {
     // Minimum size: 4 (length) + 2 (min JSON "{}") + 0 (empty data)
     if (envelopedData.length < 6) {
       throw new Error('Invalid envelope: data too small');

@@ -386,7 +386,7 @@ export class WalrusController {
       }
 
       // Download from Walrus with metadata
-      const downloadResult = await walrusService.downloadWithMetadata(blobId);
+      const downloadResult = await walrusService.download(blobId);
       const encryptedData = downloadResult.data;
       const blobMetadata = downloadResult.metadata;
 

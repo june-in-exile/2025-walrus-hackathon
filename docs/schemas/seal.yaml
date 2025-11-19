@@ -1,0 +1,87 @@
+components:
+  schemas:
+    SealPolicy:
+      type: object
+      description: Seal access control policy for a deal
+      required:
+        - policyId
+        - version
+        - rules
+      properties:
+        policyId:
+          type: string
+          description: Unique identifier for the Seal policy, often a Sui object ID.
+          example: "0xpolicy123abcdeffedcba1234567890abcdef1234567890abcdef12345678"
+        version:
+          type: integer
+          description: Policy version number.
+          example: 1
+        rules:
+          type: array
+          description: List of access control rules.
+          items:
+            $ref: '#/components/schemas/SealRule'
+
+    SealRule:
+      type: object
+      description: A single rule within a Seal policy.
+      required:
+        - resourcePath
+        - conditions
+      properties:
+        resourcePath:
+          type: string
+          description: |
+            The path of the resource this rule applies to.
+            Placeholders like `{dealId}` and `{blobId}` can be used.
+          example: "/deals/0x1234.../blobs/*"
+        conditions:
+          type: object
+          description: Conditions that must be met to grant access.
+          required:
+            - 'sui:chain'
+            - 'sui:call'
+          properties:
+            'sui:chain':
+              type: string
+              description: The required Sui network.
+              example: "sui:devnet"
+            'sui:call':
+              $ref: '#/components/schemas/SealSuiCallCondition'
+
+    SealSuiCallCondition:
+      type: object
+      description: An on-chain Sui smart contract call used for authorization.
+      required:
+        - package
+        - module
+        - function
+        - args
+      properties:
+        package:
+          type: string
+          description: The Sui package (contract) ID to call.
+          pattern: '^0x[a-fA-F0-9]{64}$'
+          example: "0xdealpackage000000000000000000000000000000000000000000000000000"
+        module:
+          type: string
+          description: The module within the package.
+          example: "earnout_seal_policy"
+        function:
+          type: string
+          description: The function to call for authorization. This function must return a boolean.
+          example: "can_access_blob"
+        args:
+          type: array
+          description: |
+            Arguments to pass to the authorization function.
+            Can include context variables like `{sui:address}`.
+          items:
+            type: string
+          example: ["{sui:address}", "{dealId}", "{blobId}"]
+
+    GetSealPolicyResponse:
+      type: object
+      properties:
+        policy:
+          $ref: '#/components/schemas/SealPolicy'

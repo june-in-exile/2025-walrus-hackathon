@@ -252,7 +252,7 @@ export interface WalrusMetadataEnvelope {
 /**
  * Result of downloading a blob with metadata
  */
-export interface WalrusDownloadWithMetadataResult {
+export interface WalrusDownloadResult {
   /** The actual data (decrypted or encrypted based on mode) */
   data: Buffer;
   /** Metadata extracted from the envelope */

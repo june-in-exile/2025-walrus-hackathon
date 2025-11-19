@@ -95,7 +95,7 @@ async function main() {
     console.log('Test 2: Download and Verify Data');
     console.log('-'.repeat(60));
 
-    const downloadResult = await walrusService.downloadWithMetadata(uploadResult1.blobId);
+    const downloadResult = await walrusService.download(uploadResult1.blobId);
 
     console.log('Download successful!');
     console.log('  Data size:', downloadResult.data.length, 'bytes');
@@ -172,7 +172,7 @@ async function main() {
     console.log();
 
     // Verify larger file
-    const downloadResult2 = await walrusService.downloadWithMetadata(uploadResult2.blobId);
+    const downloadResult2 = await walrusService.download(uploadResult2.blobId);
     const largerDataMatch = downloadResult2.data.toString() === TEST_CONFIG.largerFileContent;
     console.log('  Download and verify:', largerDataMatch ? 'PASSED' : 'FAILED');
 
@@ -182,20 +182,6 @@ async function main() {
     }
     console.log();
 
-    // Test 5: Calculate Storage Cost
-    console.log('-'.repeat(60));
-    console.log('Test 5: Calculate Storage Cost');
-    console.log('-'.repeat(60));
-
-    const costEstimate = await walrusService.calculateStorageCost(1024 * 1024, 5); // 1MB, 5 epochs
-
-    console.log('Cost estimate for 1MB, 5 epochs:');
-    console.log('  Storage Cost:', costEstimate.storageCost.toString(), 'MIST');
-    console.log('  Write Cost:', costEstimate.writeCost.toString(), 'MIST');
-    console.log('  Total Cost:', costEstimate.totalCost.toString(), 'MIST');
-    console.log('  Total (SUI):', (Number(costEstimate.totalCost) / 1_000_000_000).toFixed(6), 'SUI');
-    console.log();
-
     // Test 6: Error Handling - Non-existent Blob
     console.log('-'.repeat(60));
     console.log('Test 6: Error Handling - Non-existent Blob');
@@ -203,7 +189,7 @@ async function main() {
 
     const fakeBlobId = 'nonexistent_blob_id_12345';
     try {
-      await walrusService.downloadWithMetadata(fakeBlobId);
+      await walrusService.download(fakeBlobId);
       console.error('ERROR: Should have thrown error for non-existent blob!');
       process.exit(1);
     } catch (error) {
@@ -249,7 +235,7 @@ async function main() {
 
     // Wait and verify
     await sleep(2000);
-    const downloadResult3 = await walrusService.downloadWithMetadata(uploadResult3.blobId);
+    const downloadResult3 = await walrusService.download(uploadResult3.blobId);
 
     // Compare binary data
     const binaryMatch = binaryData.equals(downloadResult3.data);

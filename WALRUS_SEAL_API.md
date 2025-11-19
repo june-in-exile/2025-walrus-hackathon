@@ -291,7 +291,6 @@ DEBUG_WALRUS="true"
 | Test 2 | Download and Verify Data Integrity              | ✅ Pass |
 | Test 3 | Get Blob Info (HEAD request)                    | ✅ Pass |
 | Test 4 | Upload Larger File (10KB)                       | ✅ Pass |
-| Test 5 | Calculate Storage Cost Estimation               | ✅ Pass |
 | Test 6 | Error Handling - Non-existent Blob              | ✅ Pass |
 | Test 7 | Binary Data Upload and Verification             | ✅ Pass |
 

@@ -93,11 +93,16 @@ tags:
       Configure earn-out parameters including periods, KPI types, and payout formulas.
 
       Parameters are locked on-chain and become immutable after confirmation.
+  - name: Seal
+    description: |
+      Manage and retrieve Seal access control policies.
+
+      Seal enables end-to-end encryption and role-based access control, where authorization is verified by on-chain Sui smart contracts.
   - name: Walrus
     description: |
-      Upload encrypted files to Walrus decentralized storage.
+      Upload and download encrypted files to/from Walrus decentralized storage.
 
-      Upload relay reduces browser load from ~2000 requests to 1 API call.
+      Upload/download relays reduce browser load and integrate with Seal for hybrid encryption.
   - name: Timeline
     description: |
       View chronological timeline of data uploads.

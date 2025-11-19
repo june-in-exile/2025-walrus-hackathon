@@ -15,12 +15,13 @@ paths:
 
         **Mode A: client_encrypted (Default, Recommended)**
         - File is encrypted by frontend using @mysten/seal SDK before upload
+        - To perform client-side encryption, the frontend must first fetch the deal's access control policy from the `GET /deals/{dealId}/seal-policy` endpoint.
         - Backend only relays the ciphertext to Walrus (never sees plaintext)
         - Highest security: Backend cannot access file contents
         - Fully Web3: User controls their own data encryption
 
         Upload Flow:
-        1. Frontend: User selects file → Encrypts with Seal SDK → Sends ciphertext
+        1. Frontend: User selects file → Fetches Seal Policy → Encrypts with Seal SDK → Sends ciphertext
         2. Backend: Receives ciphertext → Uploads to Walrus → Returns blobId
         3. Frontend: Signs Sui transaction to register blob on-chain
 
@@ -42,7 +43,7 @@ paths:
         - Metadata: Returns blobId and commitment for on-chain registration
 
         **Seal Integration**:
-        - Policy: earnout_seal_policy controls who can decrypt
+        - Policy: `earnout_seal_policy` controls who can decrypt. The policy is retrieved via the `GET /deals/{dealId}/seal-policy` endpoint.
         - Access: Only buyer/seller/auditor can decrypt based on on-chain roles
         - Decryption keys: Managed by Seal Key Servers with blockchain verification
 
@@ -235,35 +236,36 @@ paths:
         **Decryption Modes** (controlled by `mode` query parameter):
 
         **Mode A: client_encrypted (Default, Recommended)**
-        - Backend downloads ciphertext from Walrus and returns it to frontend
-        - Frontend decrypts using @mysten/seal SDK with Seal Key Server
-        - Highest security: Backend never sees plaintext
-        - Fully Web3: User controls their own decryption keys
+        - Backend downloads ciphertext from Walrus and returns it to frontend.
+        - Frontend decrypts using `@mysten/seal` SDK with the Seal Key Server.
+        - To perform client-side decryption, the frontend must use the deal's access control policy, which can be retrieved from the `GET /deals/{dealId}/seal-policy` endpoint.
+        - Highest security: Backend never sees plaintext.
+        - Fully Web3: User controls their own decryption keys.
 
         Download Flow:
-        1. Frontend: Requests blobId with user's Sui address
-        2. Backend: Verifies access → Downloads from Walrus → Returns ciphertext
-        3. Frontend: Requests decryption key from Seal Key Server → Decrypts locally
+        1. Frontend: Requests blobId with user's Sui address.
+        2. Backend: Verifies access → Downloads from Walrus → Returns ciphertext.
+        3. Frontend: Fetches Seal Policy → Requests decryption key from Seal Key Server → Decrypts locally.
 
         **Mode B: server_encrypted (Convenience Mode)**
-        - Backend downloads from Walrus, decrypts, and returns plaintext
-        - Simplified frontend: No need to integrate Seal SDK
-        - Trade-off: Backend can access plaintext (trusted environment required)
+        - Backend downloads from Walrus, decrypts, and returns plaintext.
+        - Simplified frontend: No need to integrate Seal SDK.
+        - Trade-off: Backend can access plaintext (trusted environment required).
 
         Download Flow:
-        1. Frontend: Requests blobId with user's Sui address
-        2. Backend: Verifies access → Downloads → Decrypts → Returns plaintext
-        3. Frontend: Receives ready-to-use plaintext file
+        1. Frontend: Requests blobId with user's Sui address.
+        2. Backend: Verifies access → Downloads → Decrypts → Returns plaintext.
+        3. Frontend: Receives ready-to-use plaintext file.
 
         **Access Control**:
-        - Verification: User must be buyer/seller/auditor in the specified deal
-        - On-chain check: Backend queries Sui blockchain to verify user's role
-        - Seal Policy: Even in server mode, access is governed by earnout_seal_policy
+        - Verification: User must be buyer/seller/auditor in the specified deal.
+        - On-chain check: Backend queries Sui blockchain to verify user's role.
+        - Seal Policy: Access is governed by the `earnout_seal_policy` retrieved via `GET /deals/{dealId}/seal-policy`.
 
         **Security Notes**:
-        - All access attempts are logged for audit trail
-        - Invalid access attempts return 403 Forbidden
-        - Decryption keys are never stored, only fetched on-demand from Seal Key Servers
+        - All access attempts are logged for audit trail.
+        - Invalid access attempts return 403 Forbidden.
+        - Decryption keys are never stored, only fetched on-demand from Seal Key Servers.
       operationId: downloadFromWalrus
       tags:
         - Walrus

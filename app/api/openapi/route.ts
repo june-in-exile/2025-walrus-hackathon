@@ -6,18 +6,6 @@ import { openAPIService } from '@/src/backend/services/openapi-service';
  * Returns the complete OpenAPI specification
  */
 export async function GET() {
-  try {
-    const openapiSpec = openAPIService.generateSpec();
-    return NextResponse.json(openapiSpec);
-  } catch (error) {
-    console.error('Failed to generate OpenAPI spec:', error);
-    return NextResponse.json(
-      {
-        error: 'Internal Server Error',
-        message: 'Failed to generate OpenAPI specification',
-        statusCode: 500,
-      },
-      { status: 500 }
-    );
-  }
+  const spec = openAPIService.generateSpec();
+  return NextResponse.json(spec);
 }

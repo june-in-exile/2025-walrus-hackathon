@@ -1,0 +1,85 @@
+paths:
+  /deals/{dealId}/seal-policy:
+    get:
+      summary: Get Seal access control policy for a deal
+      description: |
+        **Purpose**: Retrieve the Seal access control policy for a specific deal.
+
+        **Why is this needed?**:
+        - The frontend needs the Seal policy to perform client-side encryption before uploading files.
+        - It's also used for client-side decryption of downloaded files.
+        - This endpoint provides the authoritative, up-to-date policy associated with the deal on-chain.
+
+        **Business Logic**:
+        - Fetches the Seal policy object associated with the `dealId`.
+        - In a real system, this would query a Sui object. In this demo, it may return a configured policy.
+        - The policy defines which on-chain contract (`sui:call`) is used to verify access rights for different roles (buyer, seller, auditor).
+
+        **Seal Integration**:
+        - This is a core endpoint for enabling the client-side "hybrid encryption" model.
+        - The returned policy is used to initialize the `@mysten/seal` SDK on the frontend.
+
+        **Access Control**:
+        - Role: All deal participants (buyer, seller, auditor).
+        - Verification: User must be a participant in the deal to view its policy.
+      operationId: getSealPolicy
+      tags:
+        - Seal
+      parameters:
+        - name: X-Sui-Address
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: '^0x[a-fA-F0-9]{64}$'
+        - name: X-Sui-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: dealId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^0x[a-fA-F0-9]{64}$'
+          description: Deal ID to get the policy for.
+          example: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+      responses:
+        '200':
+          description: Successfully retrieved Seal policy.
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/seal.yaml#/components/schemas/GetSealPolicyResponse'
+              example:
+                policy:
+                  policyId: "0xpolicy123abcdeffedcba1234567890abcdef1234567890abcdef12345678"
+                  version: 1
+                  rules:
+                    - resourcePath: "/deals/0x1234.../blobs/*"
+                      conditions:
+                        'sui:chain': "sui:devnet"
+                        'sui:call':
+                          package: "0xdealpackage000000000000000000000000000000000000000000000000000"
+                          module: "earnout_seal_policy"
+                          function: "can_access_blob"
+                          args: ["{sui:address}", "{dealId}", "{blobId}"]
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/UnauthorizedError'
+        '403':
+          description: Forbidden - User not a participant in this deal.
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/ForbiddenError'
+        '404':
+          description: Deal or Seal policy not found.
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/NotFoundError'

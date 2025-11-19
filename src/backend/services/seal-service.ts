@@ -120,7 +120,7 @@ export class SealService {
    * @param encryptionConfig - Whitelist encryption configuration
    * @returns Encrypted data with metadata
    */
-  async encryptWithWhitelist(
+  async encrypt(
     plaintext: Buffer,
     encryptionConfig: WhitelistEncryptionConfig
   ): Promise<SealEncryptionResult> {
@@ -188,7 +188,7 @@ export class SealService {
    * @param userAddress - User's Sui address (must be on whitelist)
    * @returns Decrypted data with metadata
    */
-  async decryptWithWhitelist(
+  async decrypt(
     ciphertext: Buffer,
     whitelistObjectId: string,
     packageId: string,

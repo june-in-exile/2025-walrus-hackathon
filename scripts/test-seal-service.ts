@@ -16,9 +16,8 @@
  *   - DEBUG_SEAL: Set to 'true' for verbose logging
  */
 
-// IMPORTANT: Load dotenv BEFORE any other imports
 import { config as dotenvConfig } from 'dotenv';
-dotenvConfig(); // Load .env file first
+dotenvConfig();
 
 import { getFullnodeUrl, SuiClient } from '@mysten/sui/client';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
@@ -244,7 +243,7 @@ async function main() {
 
     // Test encryption
     try {
-      const encryptResult = await sealService.encryptWithWhitelist(testData, {
+      const encryptResult = await sealService.encrypt(testData, {
         whitelistObjectId: whitelistId,
         packageId: TEST_CONFIG.packageId,
       });
@@ -272,7 +271,7 @@ async function main() {
     const whitelistedAddress = TEST_CONFIG.testAddresses[1];
 
     try {
-      const decryptResult = await sealService.decryptWithWhitelist(
+      const decryptResult = await sealService.decrypt(
         encryptedCiphertext,
         whitelistId,
         TEST_CONFIG.packageId,
@@ -306,7 +305,7 @@ async function main() {
     const nonWhitelistedAddressForDecrypt = '0x0000000000000000000000000000000000000000000000000000000000000099';
 
     try {
-      await sealService.decryptWithWhitelist(
+      await sealService.decrypt(
         encryptedCiphertext,
         whitelistId,
         TEST_CONFIG.packageId,

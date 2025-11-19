@@ -143,6 +143,13 @@ export interface WalrusUploadResponse {
   uploadedAt: string;
   /** Blob reference information */
   blobReference: BlobReference;
+  /** Audit record info (populated after on-chain registration) */
+  auditRecord?: {
+    /** Audit record ID (available after transaction execution) */
+    auditRecordId?: string;
+    /** Whether the transaction includes audit record creation */
+    willBeCreated: boolean;
+  };
   /** Next step for frontend to complete */
   nextStep: {
     action: 'register_on_chain';

@@ -2,9 +2,6 @@
  * Test script for SealService whitelist operations
  *
  * Usage:
- *   npx ts-node scripts/test-seal-service.ts
- *
- * Or with tsx:
  *   npx tsx scripts/test-seal-service.ts
  *
  * Environment variables required:

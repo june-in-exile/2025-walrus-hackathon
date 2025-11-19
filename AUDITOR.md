@@ -163,13 +163,6 @@ struct KPIResultSubmitted has copy, drop {
   }
   ```
 
-### 2.2 Update Existing API
-
-#### `POST /api/v1/walrus/upload`
-
-- **New Logic**: After successful upload, call contract to create `DataAuditRecord`
-- **New Response Field**: `auditRecordId`
-
 ---
 
 ## 3. Frontend Components
@@ -266,12 +259,12 @@ async function calculateKPI(dealId: string, periodId: string) {
 
   // 2. Download data from Walrus
   const blobs = await Promise.all(
-    auditRecords.map(r => walrusClient.download(r.dataId))
+    auditRecords.map((r) => walrusClient.download(r.dataId))
   );
 
   // 3. Decrypt using Seal
   const decryptedData = await Promise.all(
-    blobs.map(b => sealClient.decrypt(b))
+    blobs.map((b) => sealClient.decrypt(b))
   );
 
   // 4. Calculate based on KPI type
@@ -282,7 +275,7 @@ async function calculateKPI(dealId: string, periodId: string) {
     dealId,
     periodId,
     kpiValue,
-    dataIds: auditRecords.map(r => r.dataId),
+    dataIds: auditRecords.map((r) => r.dataId),
   });
 
   return { kpiValue, attestation };
@@ -293,11 +286,11 @@ async function calculateKPI(dealId: string, periodId: string) {
 
 ```typescript
 interface NautilusAttestation {
-  enclaveId: string;          // TEE enclave identifier
-  timestamp: number;          // Computation timestamp
-  inputHash: string;          // Hash of input data
-  outputHash: string;         // Hash of output result
-  signature: string;          // TEE signature
+  enclaveId: string; // TEE enclave identifier
+  timestamp: number; // Computation timestamp
+  inputHash: string; // Hash of input data
+  outputHash: string; // Hash of output result
+  signature: string; // TEE signature
 }
 ```
 
@@ -330,29 +323,28 @@ public fun verify_nautilus_attestation(
 ### Phase 2: Backend API
 
 5. [ ] Add audit record related API endpoints
-6. [ ] Update Walrus upload API to create audit records
-7. [ ] Write API tests
+6. [ ] Write API tests
 
 ### Phase 3: Frontend Audit Features
 
-8. [ ] Build `DataAuditPage` page
-9. [ ] Implement `AuditDataButton` signature flow
-10. [ ] Implement `useAuditRecords` hook
-11. [ ] Update Dashboard to show audit progress
+9. [ ] Build `DataAuditPage` page
+10. [ ] Implement `AuditDataButton` signature flow
+11. [ ] Implement `useAuditRecords` hook
+12. [ ] Update Dashboard to show audit progress
 
 ### Phase 4: Nautilus Integration
 
-12. [ ] Design Nautilus enclave calculation logic
-13. [ ] Implement attestation generation
-14. [ ] Add attestation verification to contract
-15. [ ] Add Nautilus API to backend
-16. [ ] Frontend integration for KPI calculation trigger
+13. [ ] Design Nautilus enclave calculation logic
+14. [ ] Implement attestation generation
+15. [ ] Add attestation verification to contract
+16. [ ] Add Nautilus API to backend
+17. [ ] Frontend integration for KPI calculation trigger
 
 ### Phase 5: Settlement Flow Update
 
-17. [ ] Update `settle` function verification logic
-18. [ ] Update `SettlementPanel` component
-19. [ ] End-to-end testing
+18. [ ] Update `settle` function verification logic
+19. [ ] Update `SettlementPanel` component
+20. [ ] End-to-end testing
 
 ---
 

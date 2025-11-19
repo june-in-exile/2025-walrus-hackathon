@@ -37,6 +37,7 @@ export class WalrusController {
 
   /**
    * Build transaction bytes for registering a Walrus blob on-chain
+   * Also creates a DataAuditRecord for auditor verification
    *
    * @param dealId - Deal object ID
    * @param blobId - Walrus blob ID
@@ -44,7 +45,7 @@ export class WalrusController {
    * @param dataType - Type of data stored
    * @param size - File size in bytes
    * @param uploaderAddress - Address of the uploader
-   * @returns Hex-encoded transaction bytes, or empty string if contract not configured
+   * @returns Object with hex-encoded transaction bytes and audit record creation flag
    */
   private async buildRegisterBlobTxBytes(
     dealId: string,
@@ -53,11 +54,11 @@ export class WalrusController {
     dataType: string,
     size: number,
     uploaderAddress: string
-  ): Promise<string> {
+  ): Promise<{ txBytes: string; includesAuditRecord: boolean }> {
     // Check if earnout package is configured
     if (!config.earnout.packageId) {
       console.warn('EARNOUT_PACKAGE_ID not configured, skipping transaction generation');
-      return '';
+      return { txBytes: '', includesAuditRecord: false };
     }
 
     try {
@@ -84,16 +85,36 @@ export class WalrusController {
         ],
       });
 
+      // Call create_audit_record to create DataAuditRecord for auditor verification
+      // Expected function signature:
+      // entry fun create_audit_record(
+      //   deal: &Deal,
+      //   data_id: String,
+      //   period_id: u64,
+      //   ctx: &mut TxContext
+      // )
+      // Note: The period_id here is numeric (u64), so we need to parse it
+      const periodIdNumeric = parseInt(periodId.replace(/\D/g, ''), 10) || 0;
+
+      tx.moveCall({
+        target: `${config.earnout.packageId}::earnout::create_audit_record`,
+        arguments: [
+          tx.object(dealId),
+          tx.pure.string(blobId),
+          tx.pure.u64(periodIdNumeric),
+        ],
+      });
+
       // Set sender for gas estimation
       tx.setSender(uploaderAddress);
 
       // Build transaction bytes (for frontend to sign)
       const txBytes = await tx.build({ client: this.suiClient });
 
-      return toHex(txBytes);
+      return { txBytes: toHex(txBytes), includesAuditRecord: true };
     } catch (error) {
       console.error('Failed to build register blob transaction:', error);
-      return '';
+      return { txBytes: '', includesAuditRecord: false };
     }
   }
 
@@ -189,18 +210,19 @@ export class WalrusController {
       }
 
       // Prepare blob metadata
-          const metadata: BlobMetadata = {
-            filename: filename || file.name,
-            mimeType: file.type || 'application/octet-stream',
-            description: description || undefined,
-            periodId,
-            encrypted: true,
-            encryptionMode: mode,
-            uploadedAt: new Date().toISOString(),
-            uploaderAddress: userAddress,
-            dataType: dataType as DataType,
-            customDataType: customDataType || undefined,
-          };
+      const metadata: BlobMetadata = {
+        filename: filename || file.name,
+        mimeType: file.type || 'application/octet-stream',
+        description: description || undefined,
+        dealId,
+        periodId,
+        encrypted: true,
+        encryptionMode: mode,
+        uploadedAt: new Date().toISOString(),
+        uploaderAddress: userAddress,
+        dataType: dataType as DataType,
+        customDataType: customDataType || undefined,
+      };
       // Process based on encryption mode
       let dataToUpload: Buffer;
 
@@ -238,7 +260,7 @@ export class WalrusController {
           packageId: config.seal.packageId,
         };
 
-        const encryptionResult = await sealService.encryptWithWhitelist(fileBuffer, encryptionConfig);
+        const encryptionResult = await sealService.encrypt(fileBuffer, encryptionConfig);
         dataToUpload = encryptionResult.ciphertext;
 
         console.log('Server-side encryption completed');
@@ -255,8 +277,8 @@ export class WalrusController {
       // Upload to Walrus
       const uploadResult = await walrusService.upload(dataToUpload, metadata);
 
-      // Build transaction bytes for on-chain registration
-      const txBytes = await this.buildRegisterBlobTxBytes(
+      // Build transaction bytes for on-chain registration (includes audit record creation)
+      const { txBytes, includesAuditRecord } = await this.buildRegisterBlobTxBytes(
         dealId,
         uploadResult.blobId,
         periodId,
@@ -279,12 +301,21 @@ export class WalrusController {
           size: uploadResult.size,
           metadata,
         },
+        auditRecord: {
+          willBeCreated: includesAuditRecord,
+          // auditRecordId will be available after transaction execution
+          // Frontend should extract it from transaction effects
+        },
         nextStep: {
           action: 'register_on_chain',
-          description: 'Sign transaction to register this blob on-chain',
+          description: includesAuditRecord
+            ? 'Sign transaction to register this blob and create audit record on-chain'
+            : 'Sign transaction to register this blob on-chain',
           transaction: {
             txBytes,
-            description: `Register Walrus blob: ${dataType} for ${periodId}`,
+            description: includesAuditRecord
+              ? `Register Walrus blob and create audit record: ${dataType} for ${periodId}`
+              : `Register Walrus blob: ${dataType} for ${periodId}`,
           },
         },
       };
@@ -422,7 +453,7 @@ export class WalrusController {
         }
 
         // Decrypt file using Seal with whitelist-based access control
-        const decryptionResult = await sealService.decryptWithWhitelist(
+        const decryptionResult = await sealService.decrypt(
           encryptedData,
           whitelistObjectId,
           config.seal.packageId,

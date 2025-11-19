@@ -22,17 +22,17 @@ This document details the implementation locations, testing methods, frontend in
 
 The system supports two encryption modes:
 
-| Mode | Description | Security | Frontend Complexity |
-|------|-------------|----------|---------------------|
-| `client_encrypted` | Frontend encrypts using Seal SDK, backend only relays | High (zero-knowledge) | High |
-| `server_encrypted` | Backend encrypts/decrypts using Seal SDK | Medium (requires backend trust) | Low |
+| Mode               | Description                                           | Security                        | Frontend Complexity |
+| ------------------ | ----------------------------------------------------- | ------------------------------- | ------------------- |
+| `client_encrypted` | Frontend encrypts using Seal SDK, backend only relays | High (zero-knowledge)           | High                |
+| `server_encrypted` | Backend encrypts/decrypts using Seal SDK              | Medium (requires backend trust) | Low                 |
 
 ### Endpoint List
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/v1/walrus/upload` | Upload file to Walrus |
-| GET | `/api/v1/walrus/download/{blobId}` | Download file from Walrus |
+| Method | Endpoint                           | Description               |
+| ------ | ---------------------------------- | ------------------------- |
+| POST   | `/api/v1/walrus/upload`            | Upload file to Walrus     |
+| GET    | `/api/v1/walrus/download/{blobId}` | Download file from Walrus |
 
 ---
 
@@ -81,12 +81,15 @@ src/shared/
 **Function:** Upload file to Walrus distributed storage
 
 **Query Parameters:**
+
 - `mode`: `client_encrypted` | `server_encrypted` (default: `client_encrypted`)
 
 **Headers:**
+
 ```
-X-Sui-Address: 0x...  # User's Sui address
-X-Sui-Signature: ...  # Signature (currently not verified)
+X-Sui-Address: 0x...           # User's Sui address
+X-Sui-Signature: ...           # Base64-encoded signature
+X-Sui-Signature-Message: ...   # ISO timestamp that was signed
 Content-Type: multipart/form-data
 ```
 
@@ -102,6 +105,7 @@ Content-Type: multipart/form-data
 | customDataType | string | No | Custom data type name |
 
 **Success Response (200):**
+
 ```json
 {
   "blobId": "ABC123...",
@@ -128,6 +132,7 @@ Content-Type: multipart/form-data
 ```
 
 **Error Responses:**
+
 - 400: Validation error (missing required fields, file too large, etc.)
 - 401: Missing authentication headers
 - 403: Server encryption disabled
@@ -140,19 +145,24 @@ Content-Type: multipart/form-data
 **Function:** Download file from Walrus
 
 **Path Parameters:**
+
 - `blobId`: Walrus blob ID
 
 **Query Parameters:**
+
 - `mode`: `client_encrypted` | `server_encrypted` (default: `client_encrypted`)
 - `dealId`: Deal ID (required for authorization)
 
 **Headers:**
+
 ```
-X-Sui-Address: 0x...  # User's Sui address
-X-Sui-Signature: ...  # Signature (currently not verified)
+X-Sui-Address: 0x...           # User's Sui address
+X-Sui-Signature: ...           # Base64-encoded signature
+X-Sui-Signature-Message: ...   # ISO timestamp that was signed
 ```
 
 **Success Response (200):**
+
 ```
 Content-Type: application/octet-stream
 Content-Length: 1024
@@ -163,6 +173,7 @@ X-Encryption-Mode: client_encrypted
 ```
 
 **Error Responses:**
+
 - 400: Validation error
 - 401: Missing authentication headers
 - 403: No access permission / Server decryption disabled
@@ -176,11 +187,13 @@ X-Encryption-Mode: client_encrypted
 ### Testing with cURL
 
 **1. Health Check:**
+
 ```bash
 curl http://localhost:3000/api/v1/health
 ```
 
 **2. Upload File (client_encrypted mode):**
+
 ```bash
 # Create test file
 echo "Test encrypted data" > /tmp/test.txt
@@ -197,6 +210,7 @@ curl -X POST "http://localhost:3000/api/v1/walrus/upload?mode=client_encrypted" 
 ```
 
 **3. Download File:**
+
 ```bash
 curl "http://localhost:3000/api/v1/walrus/download/{blobId}?mode=client_encrypted&dealId=0xdeal123" \
   -H "X-Sui-Address: 0x1234..." \
@@ -208,18 +222,18 @@ curl "http://localhost:3000/api/v1/walrus/download/{blobId}?mode=client_encrypte
 
 ```typescript
 // tests/walrus-api.test.ts
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from "vitest";
 
-describe('Walrus Upload API', () => {
-  it('should reject upload without auth headers', async () => {
+describe("Walrus Upload API", () => {
+  it("should reject upload without auth headers", async () => {
     const formData = new FormData();
-    formData.append('file', new Blob(['test']));
-    formData.append('dealId', '0x123');
-    formData.append('periodId', 'period1');
-    formData.append('dataType', 'revenue_journal');
+    formData.append("file", new Blob(["test"]));
+    formData.append("dealId", "0x123");
+    formData.append("periodId", "period1");
+    formData.append("dataType", "revenue_journal");
 
-    const response = await fetch('http://localhost:3000/api/v1/walrus/upload', {
-      method: 'POST',
+    const response = await fetch("http://localhost:3000/api/v1/walrus/upload", {
+      method: "POST",
       body: formData,
     });
 
@@ -238,13 +252,83 @@ describe('Walrus Upload API', () => {
 npm install @mysten/sui @mysten/dapp-kit @mysten/seal @mysten/walrus
 ```
 
+### Authentication (Signature Verification)
+
+All API requests require signature verification to prevent address spoofing. The frontend must sign a timestamp message using the user's wallet.
+
+**How it works:**
+
+1. Frontend generates an ISO timestamp
+2. User signs the timestamp with their wallet
+3. Frontend sends the signature and timestamp in request headers
+4. Backend verifies signature matches the claimed address
+5. Signatures expire after 5 minutes (replay attack prevention)
+
+**Frontend Implementation:**
+
+```typescript
+import { useSignPersonalMessage } from "@mysten/dapp-kit";
+
+// Hook for signing messages
+const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
+
+async function createAuthHeaders(userAddress: string): Promise<HeadersInit> {
+  // 1. Generate timestamp
+  const timestamp = new Date().toISOString();
+
+  // 2. Sign the timestamp
+  const messageBytes = new TextEncoder().encode(timestamp);
+  const { signature } = await signPersonalMessage({
+    message: messageBytes,
+  });
+
+  // 3. Return headers
+  return {
+    "X-Sui-Address": userAddress,
+    "X-Sui-Signature": signature,
+    "X-Sui-Signature-Message": timestamp,
+  };
+}
+
+// Usage example
+async function uploadWithAuth(
+  file: File,
+  dealId: string,
+  periodId: string,
+  userAddress: string
+) {
+  const authHeaders = await createAuthHeaders(userAddress);
+
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("dealId", dealId);
+  formData.append("periodId", periodId);
+  formData.append("dataType", "revenue_journal");
+
+  const response = await fetch("/api/v1/walrus/upload?mode=client_encrypted", {
+    method: "POST",
+    headers: authHeaders,
+    body: formData,
+  });
+
+  return response.json();
+}
+```
+
+**Important Notes:**
+
+- Signatures expire after **5 minutes** - generate fresh signature for each request
+- Clock skew tolerance is 30 seconds (future timestamps rejected)
+- The message must be an ISO 8601 timestamp string
+- Backend uses `@mysten/sui/verify` to cryptographically verify signatures
+
 ### Client-Encrypted Mode (Recommended)
 
 **Upload Flow:**
 
 ```typescript
-import { SealClient } from '@mysten/seal';
-import { useSignAndExecuteTransaction } from '@mysten/dapp-kit';
+import { SealClient } from "@mysten/seal";
+import { useSignAndExecuteTransaction } from "@mysten/dapp-kit";
 
 async function uploadEncryptedFile(
   file: File,
@@ -261,8 +345,8 @@ async function uploadEncryptedFile(
   const sealClient = new SealClient({
     suiClient,
     serverConfigs: [
-      { objectId: '0x73d05d62...', weight: 1 },
-      { objectId: '0xf5d14a81...', weight: 1 },
+      { objectId: "0x73d05d62...", weight: 1 },
+      { objectId: "0xf5d14a81...", weight: 1 },
     ],
   });
 
@@ -275,18 +359,18 @@ async function uploadEncryptedFile(
 
   // 3. Upload ciphertext to backend
   const formData = new FormData();
-  formData.append('file', new Blob([encryptedObject]));
-  formData.append('dealId', dealId);
-  formData.append('periodId', periodId);
-  formData.append('dataType', dataType);
-  formData.append('filename', file.name);
+  formData.append("file", new Blob([encryptedObject]));
+  formData.append("dealId", dealId);
+  formData.append("periodId", periodId);
+  formData.append("dataType", dataType);
+  formData.append("filename", file.name);
 
-  const response = await fetch('/api/v1/walrus/upload?mode=client_encrypted', {
-    method: 'POST',
-    headers: {
-      'X-Sui-Address': userAddress,
-      'X-Sui-Signature': 'placeholder', // TODO: Implement signature
-    },
+  // Get auth headers (see Authentication section above)
+  const authHeaders = await createAuthHeaders(userAddress);
+
+  const response = await fetch("/api/v1/walrus/upload?mode=client_encrypted", {
+    method: "POST",
+    headers: authHeaders,
     body: formData,
   });
 
@@ -309,13 +393,11 @@ async function downloadAndDecrypt(
   sealClient: SealClient
 ) {
   // 1. Download ciphertext
+  const authHeaders = await createAuthHeaders(userAddress);
   const response = await fetch(
     `/api/v1/walrus/download/${blobId}?mode=client_encrypted&dealId=${dealId}`,
     {
-      headers: {
-        'X-Sui-Address': userAddress,
-        'X-Sui-Signature': 'placeholder',
-      },
+      headers: authHeaders,
     }
   );
 
@@ -340,7 +422,7 @@ async function downloadAndDecrypt(
   tx.moveCall({
     target: `${WHITELIST_PACKAGE_ID}::whitelist::seal_approve`,
     arguments: [
-      tx.pure.vector('u8', Array.from(fromHex(encryptedKeyId))),
+      tx.pure.vector("u8", Array.from(fromHex(encryptedKeyId))),
       tx.object(WHITELIST_OBJECT_ID),
     ],
   });
@@ -372,19 +454,23 @@ async function downloadAndDecrypt(
 
 ```typescript
 // Upload (backend encrypts)
-async function uploadPlaintext(file: File, dealId: string, periodId: string) {
-  const formData = new FormData();
-  formData.append('file', file); // plaintext
-  formData.append('dealId', dealId);
-  formData.append('periodId', periodId);
-  formData.append('dataType', 'revenue_journal');
+async function uploadPlaintext(
+  file: File,
+  dealId: string,
+  periodId: string,
+  userAddress: string
+) {
+  const authHeaders = await createAuthHeaders(userAddress);
 
-  const response = await fetch('/api/v1/walrus/upload?mode=server_encrypted', {
-    method: 'POST',
-    headers: {
-      'X-Sui-Address': userAddress,
-      'X-Sui-Signature': 'placeholder',
-    },
+  const formData = new FormData();
+  formData.append("file", file); // plaintext
+  formData.append("dealId", dealId);
+  formData.append("periodId", periodId);
+  formData.append("dataType", "revenue_journal");
+
+  const response = await fetch("/api/v1/walrus/upload?mode=server_encrypted", {
+    method: "POST",
+    headers: authHeaders,
     body: formData,
   });
 
@@ -392,14 +478,17 @@ async function uploadPlaintext(file: File, dealId: string, periodId: string) {
 }
 
 // Download (backend decrypts)
-async function downloadPlaintext(blobId: string, dealId: string) {
+async function downloadPlaintext(
+  blobId: string,
+  dealId: string,
+  userAddress: string
+) {
+  const authHeaders = await createAuthHeaders(userAddress);
+
   const response = await fetch(
     `/api/v1/walrus/download/${blobId}?mode=server_encrypted&dealId=${dealId}`,
     {
-      headers: {
-        'X-Sui-Address': userAddress,
-        'X-Sui-Signature': 'placeholder',
-      },
+      headers: authHeaders,
     }
   );
 
@@ -416,6 +505,7 @@ async function downloadPlaintext(blobId: string, dealId: string) {
 #### 1. WASM File Loading Failure
 
 **Error Message:**
+
 ```
 ENOENT: no such file or directory, open '/ROOT/node_modules/@mysten/walrus-wasm/walrus_wasm_bg.wasm'
 ```
@@ -425,73 +515,14 @@ ENOENT: no such file or directory, open '/ROOT/node_modules/@mysten/walrus-wasm/
 **Root Cause:** `@mysten/walrus` SDK resolves WASM file path incorrectly in Next.js environment
 
 **Possible Solutions:**
+
 1. Upgrade `@mysten/walrus` to latest version
 2. Configure Next.js `next.config.js` for WASM handling
 3. Use HTTP to call Walrus aggregator directly (bypass SDK)
 
 ---
 
-#### 2. Missing Seal Service Methods
-
-**Problem Description:**
-
-`walrus-controller.ts` calls non-existent methods:
-- Line 140: `sealService.encrypt(fileBuffer, encryptionConfig)`
-- Line 282: `sealService.decrypt(encryptedData, dealId, userAddress)`
-
-But `seal-service.ts` only provides:
-- `encryptWithWhitelist(plaintext, WhitelistEncryptionConfig)`
-- `decryptWithWhitelist(ciphertext, whitelistObjectId, packageId, userAddress)`
-
-**Impact:** `server_encrypted` mode completely non-functional
-
-**Solutions:**
-Option A: Add `encrypt()` and `decrypt()` methods to `seal-service.ts`
-Option B: Update `walrus-controller.ts` to use correct method names and parameters
-
----
-
-#### 3. Interface Definition Mismatch
-
-**Controller expects:**
-```typescript
-interface SealEncryptionConfig {
-  policyObjectId: string;
-  dealId: string;
-  periodId: string;
-}
-```
-
-**Service provides:**
-```typescript
-interface WhitelistEncryptionConfig {
-  whitelistObjectId: string;
-  packageId: string;
-}
-```
-
-**Impact:** Even if method names are fixed, parameter structures are incompatible
-
----
-
-### Medium Priority Issues
-
-#### 4. Signature Verification Not Implemented
-
-**Location:** `walrus-controller.ts:342-347`
-
-```typescript
-private async verifySignature(address: string, signature: string): Promise<boolean> {
-  // Placeholder for signature verification
-  return true;
-}
-```
-
-**Risk:** Anyone can spoof `X-Sui-Address` header
-
----
-
-#### 5. Transaction Bytes Not Generated
+#### 2. Transaction Bytes Not Generated
 
 **Location:** `walrus-controller.ts:175`
 
@@ -508,15 +539,42 @@ transaction: {
 
 ### Low Priority Issues
 
-#### 6. Blob Metadata Storage
+#### 3. Blob Metadata Storage
 
-Metadata currently only in memory, not persisted. Needs:
-- Database storage, or
-- On-chain storage on Sui
+**Problem:** Metadata is only passed through the upload response but not persisted anywhere. When downloading, there's no way to retrieve the original metadata.
 
-#### 7. Error Message Internationalization
+**What is metadata?** Each uploaded blob has associated `BlobMetadata`:
 
-Error messages are currently English only.
+```typescript
+interface BlobMetadata {
+  filename: string;        // e.g., "Q4-2024-revenue.xlsx"
+  mimeType: string;        // e.g., "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  description?: string;    // e.g., "Q4 2024 revenue journal with monthly breakdown"
+  periodId: string;        // e.g., "period-2024-q4"
+  encrypted: boolean;      // true
+  encryptionMode: string;  // "client_encrypted" | "server_encrypted"
+  uploadedAt: string;      // e.g., "2025-01-15T10:30:00.000Z"
+  uploaderAddress: string; // e.g., "0x1234...abcd"
+  dataType: string;        // e.g., "revenue_journal" | "ebitda_report" | "audit_report"
+  customDataType?: string; // e.g., "inventory_report" (when dataType is "custom")
+}
+```
+
+**Current behavior:**
+1. Upload returns metadata in response ✅
+2. Metadata is lost after response ❌
+3. Download cannot retrieve original filename, dataType, etc. ❌
+
+**Impact:**
+- Frontend cannot display file list with proper names and types
+- Cannot filter blobs by dataType or periodId
+- Cannot show upload history or audit trail
+
+**Possible solutions:**
+
+1. **Database storage** - Store metadata in PostgreSQL/SQLite with blobId as key
+2. **On-chain storage** - Store metadata hash or full data in Sui Move contract
+3. **Walrus metadata** - Some Walrus implementations support metadata alongside blob data
 
 ---
 
@@ -567,21 +625,18 @@ TEST_CAP_ID="0x299098c9..."
 ### Immediate Fixes (Blocking Issues)
 
 1. **Resolve WASM Loading Issue**
+
    - Check `@mysten/walrus` version
    - Configure Next.js WASM support
    - Or switch to HTTP API for aggregator calls
 
-2. **Implement Missing Seal Methods**
-   - Add `encrypt()` / `decrypt()` methods
-   - Or update controller to use existing methods
+2. ~~**Implement Missing Seal Methods**~~ ✅ Done - Controller correctly uses existing methods
 
-3. **Unify Interface Definitions**
-   - Decide between `SealEncryptionConfig` or `WhitelistEncryptionConfig`
-   - Update related code
+3. ~~**Unify Interface Definitions**~~ ✅ Done - Using `WhitelistEncryptionConfig`
 
 ### Follow-up Optimizations
 
-4. Implement signature verification
+4. ~~Implement signature verification~~ ✅ Done
 5. Generate actual transaction bytes
 6. Add unit and integration tests
 7. Implement metadata persistence
@@ -597,4 +652,4 @@ TEST_CAP_ID="0x299098c9..."
 
 ---
 
-*Document last updated: 2025-11-19*
+_Document last updated: 2025-11-19_

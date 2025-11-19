@@ -6,26 +6,30 @@
 import { useQuery } from '@tanstack/react-query';
 import type { DashboardResponse } from '@/src/frontend/lib/api-client';
 import { getDashboardByDealId } from '@/src/frontend/lib/mock-data';
+import { useRole } from '@/src/frontend/contexts/RoleContext';
 
 // Query keys
 export const dashboardKeys = {
   all: ['dashboard'] as const,
-  detail: (dealId: string) => [...dashboardKeys.all, dealId] as const,
+  detail: (dealId: string, role: string) => [...dashboardKeys.all, dealId, role] as const,
 };
 
 /**
  * Hook to fetch dashboard data for a specific deal
+ * Automatically uses the current role from RoleContext
  */
 export function useDashboard(dealId: string) {
+  const { currentRole } = useRole();
+
   return useQuery<DashboardResponse>({
-    queryKey: dashboardKeys.detail(dealId),
+    queryKey: dashboardKeys.detail(dealId, currentRole),
     queryFn: async () => {
       // Simulate API delay
       await new Promise((resolve) => setTimeout(resolve, 400));
 
-      // Return mock dashboard data based on dealId
+      // Return mock dashboard data based on dealId and current role
       // In real implementation, this would call the API with dealId
-      return getDashboardByDealId(dealId);
+      return getDashboardByDealId(dealId, currentRole);
     },
     enabled: !!dealId,
   });

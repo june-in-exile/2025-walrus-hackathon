@@ -386,14 +386,74 @@ export const mockDraftDealDashboard: DashboardResponse = ({
   },
 }) as any;
 
-// Helper to get dashboard by dealId
-export function getDashboardByDealId(dealId: string): DashboardResponse {
+// Helper to get dashboard by dealId and role
+export function getDashboardByDealId(dealId: string, role: 'buyer' | 'seller' | 'auditor' = 'buyer'): DashboardResponse {
   if (dealId === '0xdraft123456789abcdef1234567890abcdef1234567890abcdef1234567890ab') {
-    return mockDraftDealDashboard;
+    return {
+      ...mockDraftDealDashboard,
+      dealInfo: {
+        ...mockDraftDealDashboard.dealInfo,
+        userRole: role,
+      },
+    };
   }
 
-  // Default: return first deal's dashboard with updated dealId
+  // Default: return first deal's dashboard with updated dealId and role
   const deal = mockDeals.find(d => d.dealId === dealId) || mockDeals[0];
+
+  // Customize period summaries based on role
+  const basePeriods = mockDashboardResponse.periodsSummary;
+  const rolePeriods = basePeriods.map(period => {
+    // Clone the period
+    const p = { ...period };
+
+    // Customize nextAction based on period and role
+    if (period.periodId === 'period_2026') {
+      // Period 2026: Settled - no action needed
+      p.nextAction = undefined;
+    } else if (period.periodId === 'period_2027') {
+      // Period 2027: KPI approved, awaiting settlement
+      if (role === 'buyer') {
+        p.nextAction = {
+          action: 'Execute Settlement',
+          actor: 'buyer',
+          deadline: '2028-02-15',
+        } as any;
+      } else if (role === 'seller') {
+        p.nextAction = {
+          action: 'Awaiting Settlement Payment',
+          actor: 'buyer',
+          deadline: '2028-02-15',
+        } as any;
+      } else {
+        p.nextAction = undefined;
+      }
+    } else if (period.periodId === 'period_2028') {
+      // Period 2028: Pending, needs data upload and attestation
+      if (role === 'seller') {
+        p.nextAction = {
+          action: 'Upload Financial Documents',
+          actor: 'seller',
+          deadline: '2029-01-31',
+        } as any;
+      } else if (role === 'auditor') {
+        p.nextAction = {
+          action: 'Awaiting Data Upload',
+          actor: 'seller',
+          deadline: '2029-01-31',
+        } as any;
+      } else {
+        p.nextAction = {
+          action: 'Awaiting Data Upload',
+          actor: 'seller',
+          deadline: '2029-01-31',
+        } as any;
+      }
+    }
+
+    return p;
+  });
+
   return {
     ...mockDashboardResponse,
     dealInfo: {
@@ -403,6 +463,8 @@ export function getDashboardByDealId(dealId: string): DashboardResponse {
       closingDate: deal.closingDate,
       currency: deal.currency,
       status: deal.status,
+      userRole: role,
     },
+    periodsSummary: rolePeriods,
   } as any;
 }

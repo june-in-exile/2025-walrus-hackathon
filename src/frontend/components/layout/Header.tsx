@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { Menu } from 'lucide-react';
 import { useState } from 'react';
 import { WalletButton } from '@/src/frontend/components/wallet/WalletButton';
+import { RoleSwitcher } from '@/src/frontend/components/dev/RoleSwitcher';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -19,6 +20,8 @@ export function Header() {
 
   const navLinks = [
     { href: '/deals', label: 'My Deals' },
+    { href: '/settlements', label: 'Settlements' },
+    { href: '/reviews', label: 'Reviews' },
     { href: '/api-docs', label: 'API Docs' },
   ];
 
@@ -54,8 +57,11 @@ export function Header() {
           </nav>
         </div>
 
-        {/* Right side: Wallet Button + Mobile Menu */}
+        {/* Right side: Role Switcher + Wallet Button + Mobile Menu */}
         <div className="flex items-center gap-2">
+          {/* Role Switcher - dev mode */}
+          <RoleSwitcher />
+
           {/* Wallet Button - always visible */}
           <div className="hidden sm:block">
             <WalletButton />

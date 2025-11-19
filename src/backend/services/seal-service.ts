@@ -59,7 +59,20 @@ export class SealService {
     if (config.sui.backendPrivateKey) {
       try {
         // Decode base64 private key
-        const privateKeyBytes = Buffer.from(config.sui.backendPrivateKey, 'base64');
+        let privateKeyBytes = Buffer.from(config.sui.backendPrivateKey, 'base64');
+
+        // Handle different key formats:
+        // - 32 bytes: raw Ed25519 secret key
+        // - 33 bytes: scheme flag (0x00 for Ed25519) + 32 byte secret key
+        // - 64 bytes: full keypair (secret + public)
+        if (privateKeyBytes.length === 33) {
+          // Remove the scheme flag prefix (first byte)
+          privateKeyBytes = privateKeyBytes.subarray(1);
+        } else if (privateKeyBytes.length === 64) {
+          // Take only the first 32 bytes (secret key)
+          privateKeyBytes = privateKeyBytes.subarray(0, 32);
+        }
+
         this.backendKeypair = Ed25519Keypair.fromSecretKey(privateKeyBytes);
       } catch (error) {
         console.error('Failed to initialize backend keypair:', error);
@@ -101,26 +114,6 @@ export class SealService {
   }
 
   /**
-   * Convert whitelist object ID to bytes for Seal encryption
-   *
-   * The id parameter represents the access control policy identifier.
-   * For whitelist-based access control, this is simply the whitelist object ID.
-   *
-   * @param whitelistObjectId - Whitelist object ID (32 bytes hex)
-   * @returns Whitelist ID as Uint8Array
-   */
-  private getWhitelistIdBytes(whitelistObjectId: string): Uint8Array {
-    // Remove 0x prefix if present
-    const cleanWhitelistId = whitelistObjectId.startsWith('0x')
-      ? whitelistObjectId.slice(2)
-      : whitelistObjectId;
-
-    // Convert whitelist ID to bytes (32 bytes)
-    return fromHex(cleanWhitelistId);
-  }
-
-
-  /**
    * Encrypt file data using Seal with whitelist-based access control
    *
    * @param plaintext - File data to encrypt
@@ -136,14 +129,17 @@ export class SealService {
     }
 
     try {
-      // Get whitelist ID as bytes for the id parameter
-      const id = this.getWhitelistIdBytes(encryptionConfig.whitelistObjectId);
+      // The Seal SDK expects id as a hex string (with or without 0x prefix)
+      // Remove 0x prefix for consistency with Seal's fromHex which handles both
+      const id = encryptionConfig.whitelistObjectId.startsWith('0x')
+        ? encryptionConfig.whitelistObjectId.slice(2)
+        : encryptionConfig.whitelistObjectId;
 
       if (debugConfig.seal) {
         console.log('Encrypting data with Seal (whitelist mode)');
         console.log('Whitelist Object ID:', encryptionConfig.whitelistObjectId);
         console.log('Package ID:', encryptionConfig.packageId);
-        console.log('ID (hex):', toHex(id));
+        console.log('ID (hex):', id);
         console.log('Data size:', plaintext.length, 'bytes');
       }
 
@@ -151,12 +147,12 @@ export class SealService {
       const data = new Uint8Array(plaintext);
 
       // Encrypt using Seal
-      // The id parameter is the access control policy identifier (whitelist object ID)
-      // Seal will automatically prepend the package ID
+      // The id parameter is the access control policy identifier (whitelist object ID as hex string)
+      // Seal will automatically prepend the package ID to create the full key-id
       const { encryptedObject } = await this.sealClient.encrypt({
         threshold: 2, // Require 2 out of N key servers
         packageId: encryptionConfig.packageId,
-        id, // whitelist object ID
+        id, // whitelist object ID as hex string
         data,
       });
 
@@ -215,25 +211,35 @@ export class SealService {
         console.log('Ciphertext size:', ciphertext.length, 'bytes');
       }
 
+      // Verify user has access before decrypting
+      // In server-side mode, backend acts as trusted intermediary but must check user authorization
+      const accessResult = await this.verifyAccess(whitelistObjectId, userAddress);
+      if (!accessResult.hasAccess) {
+        throw new Error(`User ${userAddress} is not authorized to decrypt: ${accessResult.reason}`);
+      }
+
+      if (debugConfig.seal) {
+        console.log('User access verified:', userAddress);
+      }
+
       // Convert Buffer to Uint8Array
       const data = new Uint8Array(ciphertext);
 
       // Parse encrypted object to get the key-id
+      // Note: encryptedKeyId is a hex string (BCS transform applies toHex)
       const parsedEncryptedBlob = EncryptedObject.parse(data);
       const encryptedKeyId = parsedEncryptedBlob.id;
 
       if (debugConfig.seal) {
-        console.log('Encrypted Key-ID (hex):', toHex(encryptedKeyId));
+        console.log('Encrypted Key-ID (hex):', encryptedKeyId);
       }
-
-      // Remove 0x prefix from package ID
-      const cleanPackageId = packageId.startsWith('0x') ? packageId.slice(2) : packageId;
 
       // Create session key for decryption
       // In server-side mode, we use backend keypair as trusted intermediary
+      // Note: SessionKey expects packageId as a hex string (with 0x prefix)
       const sessionKey = new SessionKey({
         address: this.backendKeypair.toSuiAddress(),
-        packageId: fromHex(cleanPackageId),
+        packageId: packageId,
         ttlMin: 10, // 10 minute session
       });
 
@@ -248,12 +254,12 @@ export class SealService {
 
       // Call earnout_agreement::whitelist::seal_approve
       // Arguments: (id: vector<u8>, wl: &Whitelist, ctx: &TxContext)
-      // Note: id should be the full key-id (without package prefix)
+      // Note: id should be the key-id bytes (without package prefix)
       tx.moveCall({
         target: `${packageId}::whitelist::seal_approve`,
         arguments: [
-          // First argument: the key-id (excludes package prefix)
-          tx.pure.vector('u8', Array.from(encryptedKeyId)),
+          // First argument: the key-id as bytes (convert from hex string)
+          tx.pure.vector('u8', Array.from(fromHex(encryptedKeyId))),
           // Second argument: reference to the Whitelist object
           tx.object(whitelistObjectId),
         ],
@@ -392,22 +398,55 @@ export class SealService {
     userAddress: string
   ): Promise<boolean> {
     try {
+      // First, get the Whitelist object to find the Table's object ID
+      const whitelistObj = await this.suiClient.getObject({
+        id: whitelistObjectId,
+        options: {
+          showContent: true,
+        },
+      });
+
+      if (!whitelistObj.data?.content || whitelistObj.data.content.dataType !== 'moveObject') {
+        if (debugConfig.seal) {
+          console.log('Failed to get whitelist object content');
+        }
+        return false;
+      }
+
+      // Extract the Table's object ID from the 'addresses' field
+      const fields = whitelistObj.data.content.fields as Record<string, unknown>;
+      const addressesTable = fields.addresses as { fields: { id: { id: string } } };
+      const tableId = addressesTable?.fields?.id?.id;
+
+      if (!tableId) {
+        if (debugConfig.seal) {
+          console.log('Failed to extract table ID from whitelist');
+        }
+        return false;
+      }
+
       // Query the Table's dynamic field for the user address
-      // The whitelist uses Table<address, bool> stored in 'addresses' field
-      const dynamicFields = await this.suiClient.getDynamicFieldObject({
-        parentId: whitelistObjectId,
+      const dynamicField = await this.suiClient.getDynamicFieldObject({
+        parentId: tableId,
         name: {
           type: 'address',
           value: userAddress,
         },
       });
 
-      // If the field exists, the user is whitelisted
-      return dynamicFields.data !== null;
+      // If the field exists and has data, the user is whitelisted
+      if (!dynamicField.data) {
+        if (debugConfig.seal) {
+          console.log('User not found in whitelist:', userAddress);
+        }
+        return false;
+      }
+
+      return true;
     } catch (error) {
       // Field not found means user is not whitelisted
       if (debugConfig.seal) {
-        console.log('User not found in whitelist:', userAddress);
+        console.log('User not found in whitelist:', userAddress, error);
       }
       return false;
     }

@@ -35,7 +35,7 @@ export interface WhitelistEncryptionConfig {
 /**
  * Seal Service for server-side encryption/decryption
  *
- * Integrates with earnout_agreement::whitelist Move contract for access control.
+ * Integrates with contracts::whitelist Move contract for access control.
  * Only addresses added to a Whitelist can decrypt data encrypted with that whitelist's key-id.
  */
 export class SealService {
@@ -249,7 +249,7 @@ export class SealService {
       // This transaction is NOT executed, just used for verification
       const tx = new Transaction();
 
-      // Call earnout_agreement::whitelist::seal_approve
+      // Call contracts::whitelist::seal_approve
       // Arguments: (id: vector<u8>, wl: &Whitelist, ctx: &TxContext)
       // Note: id should be the key-id bytes (without package prefix)
       tx.moveCall({

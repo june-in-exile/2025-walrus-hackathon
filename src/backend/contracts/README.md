@@ -39,7 +39,7 @@ $ sui client switch --env testnet
 sui client faucet
 
 # build the contract
-$ cd contracts
+$ cd src/backend/contracts
 $ sui move build
 
 # deploy to testnet

@@ -446,7 +446,7 @@ const ESignatureMismatch: u64 = 5;    // Signature doesn't match expected messag
 
 ```bash
 # Navigate to Move contract directory
-cd contracts/earnout
+cd src/backend/contracts
 
 # Run all tests
 sui move test

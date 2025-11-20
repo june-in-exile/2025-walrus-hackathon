@@ -1,73 +1,15 @@
 # Walrus & Seal API Technical Documentation
 
-This document details the implementation locations, testing methods, frontend integration, and known issues for Walrus storage and Seal encryption APIs.
+This document details the API endpoints, testing methods, and frontend integration for Walrus storage and Seal encryption APIs.
 
 ---
 
 ## Table of Contents
 
-1. [API Overview](#api-overview)
-2. [File Locations](#file-locations)
-3. [API Endpoints](#api-endpoints)
-4. [Backend Testing](#backend-testing)
-5. [Frontend Integration](#frontend-integration)
-6. [Environment Configuration](#environment-configuration)
-
----
-
-## API Overview
-
-### Encryption Modes
-
-The system supports two encryption modes:
-
-| Mode               | Description                                                    | Security                                            | Frontend Complexity |
-| ------------------ | -------------------------------------------------------------- | --------------------------------------------------- | ------------------- |
-| `client_encrypted` | Frontend encrypts during upload, frontend decrypts on download | High (zero-knowledge, backend never sees plaintext) | High                |
-| `server_encrypted` | Backend encrypts during upload, frontend decrypts on download  | Medium (backend sees plaintext only during upload)  | Medium              |
-
-### Endpoint List
-
-| Method | Endpoint                           | Description               |
-| ------ | ---------------------------------- | ------------------------- |
-| POST   | `/api/v1/walrus/upload`            | Upload file to Walrus     |
-| GET    | `/api/v1/walrus/download/{blobId}` | Download file from Walrus |
-
----
-
-## File Locations
-
-### API Routes (Next.js App Router)
-
-```
-app/api/v1/walrus/
-├── upload/
-│   └── route.ts              # POST /api/v1/walrus/upload
-└── download/
-    └── [blobId]/
-        └── route.ts          # GET /api/v1/walrus/download/{blobId}
-```
-
-### Backend Layer Architecture
-
-```
-src/backend/
-├── controllers/
-│   └── walrus-controller.ts  # HTTP request handling, validation, orchestration
-└── services/
-    ├── walrus-service.ts     # Walrus storage operations
-    └── seal-service.ts       # Seal encryption/decryption operations
-```
-
-### Shared Types
-
-```
-src/shared/
-├── types/
-│   └── walrus.ts             # TypeScript interface definitions
-└── config/
-    └── env.ts                # Environment variable configuration
-```
+1. [API Endpoints](#api-endpoints)
+2. [Backend Testing](#backend-testing)
+3. [Frontend Integration](#frontend-integration)
+4. [Environment Configuration](#environment-configuration)
 
 ---
 

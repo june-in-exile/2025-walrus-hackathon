@@ -4,11 +4,11 @@ import { useCurrentAccount } from '@mysten/dapp-kit';
 import { useRole } from '@/src/frontend/contexts/RoleContext';
 import { useDeals, useDealStats } from '@/src/frontend/hooks/useDeals';
 import { DealCard } from '@/src/frontend/components/deals/DealCard';
-import { CreateDealDialog } from '@/src/frontend/components/deals/CreateDealDialog';
 import { WalletButton } from '@/src/frontend/components/wallet/WalletButton';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, Briefcase, TrendingUp, CheckCircle2, FileText, Wallet } from 'lucide-react';
+import { Loader2, Briefcase, TrendingUp, CheckCircle2, FileText, Wallet, Plus } from 'lucide-react';
+import Link from 'next/link';
 
 export default function DealsPage() {
   const currentAccount = useCurrentAccount();
@@ -76,9 +76,12 @@ export default function DealsPage() {
               </p>
             </div>
             {currentRole === 'buyer' && (
-              <div>
-                <CreateDealDialog />
-              </div>
+              <Button asChild size="lg">
+                <Link href="/deals/create">
+                  <Plus className="mr-2 h-5 w-5" />
+                  Create New Deal
+                </Link>
+              </Button>
             )}
           </div>
 
@@ -139,9 +142,12 @@ export default function DealsPage() {
                       : 'No deals available to view'}
                   </p>
                   {currentRole === 'buyer' && (
-                    <CreateDealDialog>
-                      <Button size="lg">Create Your First Deal</Button>
-                    </CreateDealDialog>
+                    <Button asChild size="lg">
+                      <Link href="/deals/create">
+                        <Plus className="mr-2 h-5 w-5" />
+                        Create Your First Deal
+                      </Link>
+                    </Button>
                   )}
                 </div>
               </div>

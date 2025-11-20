@@ -216,22 +216,38 @@ const mockPeriods: Period[] = ([
   },
 ]) as any;
 
+// Extended Deal type for mock data with new fields from Contract_Spec.md
+export type DealWithExtendedFields = Deal & {
+  buyerName?: string;
+  sellerName?: string;
+  earnoutPeriodYears?: number;
+  kpiTargetAmount?: number;
+  contingentConsiderationAmount?: number;
+  headquarterExpenseAllocationPercentage?: number;
+};
+
 // Mock Deals
-export const mockDeals: Deal[] = [
+export const mockDeals: DealWithExtendedFields[] = [
   {
     dealId: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
-    name: 'Acquisition of TechCorp Inc.',
+    name: 'BuyYou Inc. & Global Tech Solutions Inc. Asset Purchase',
+    buyerName: 'BuyYou Inc.',
+    sellerName: 'Global Tech Solutions Inc.',
     closingDate: new Date('2025-12-31'),
     currency: 'USD',
     buyer: MOCK_ADDRESSES.buyer,
     seller: MOCK_ADDRESSES.seller,
     auditor: MOCK_ADDRESSES.auditor,
     status: 'active' as DealStatusEnum,
+    earnoutPeriodYears: 3,
+    kpiTargetAmount: 900000,
+    contingentConsiderationAmount: 30000000,
+    headquarterExpenseAllocationPercentage: 0.10,
     periods: mockPeriods,
     metadata: {
       industry: 'Technology',
       dealSize: '50M USD',
-      notes: 'Standard SaaS acquisition',
+      notes: 'Standard SaaS acquisition with 3-year earn-out period',
     },
     createdAt: new Date('2025-11-16T10:00:00Z'),
     updatedAt: new Date('2025-11-16T15:30:00Z'),
@@ -239,12 +255,18 @@ export const mockDeals: Deal[] = [
   {
     dealId: '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
     name: 'Acquisition of DataFlow Systems',
+    buyerName: 'BuyYou Inc.',
+    sellerName: 'DataFlow Systems LLC',
     closingDate: new Date('2026-03-15'),
     currency: 'USD',
     buyer: MOCK_ADDRESSES.buyer,
     seller: MOCK_ADDRESSES.seller,
     auditor: MOCK_ADDRESSES.auditor,
     status: 'active' as DealStatusEnum,
+    earnoutPeriodYears: 2,
+    kpiTargetAmount: 500000,
+    contingentConsiderationAmount: 15000000,
+    headquarterExpenseAllocationPercentage: 0.08,
     periods: ([
       {
         periodId: 'period_2026',
@@ -260,27 +282,10 @@ export const mockDeals: Deal[] = [
     metadata: {
       industry: 'Data Analytics',
       dealSize: '30M USD',
+      notes: '2-year earn-out with lower overhead allocation',
     },
     createdAt: new Date('2026-01-10T08:00:00Z'),
     updatedAt: new Date('2026-01-10T08:00:00Z'),
-  },
-  {
-    dealId: '0xdraft123456789abcdef1234567890abcdef1234567890abcdef1234567890ab',
-    name: 'New Deal - CloudTech Acquisition',
-    closingDate: new Date('2026-06-01'),
-    currency: 'USD',
-    buyer: MOCK_ADDRESSES.buyer,
-    seller: MOCK_ADDRESSES.seller,
-    auditor: MOCK_ADDRESSES.auditor,
-    status: 'draft' as DealStatusEnum,
-    periods: [],
-    metadata: {
-      industry: 'Cloud Computing',
-      dealSize: '40M USD',
-      notes: 'Parameters not yet configured',
-    },
-    createdAt: new Date('2025-11-17T10:00:00Z'),
-    updatedAt: new Date('2025-11-17T10:00:00Z'),
   },
 ];
 

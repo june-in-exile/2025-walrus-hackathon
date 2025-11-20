@@ -767,6 +767,168 @@ export class WalrusController {
       };
     }
   }
+
+  /**
+   * Build transaction bytes for submitting KPI result from Nautilus TEE
+   *
+   * @param dealId - Deal object ID on Sui
+   * @param periodIndex - Index of the period in the deal
+   * @param kpiType - Type of KPI (e.g., "revenue", "ebitda")
+   * @param kpiValue - Calculated KPI value
+   * @param attestation - Nautilus TEE attestation (base64 encoded)
+   * @param userAddress - Sui address of transaction sender (must be buyer)
+   * @returns Transaction bytes and metadata
+   */
+  async buildSubmitKPIResultTxBytes(
+    dealId: string,
+    periodIndex: number,
+    kpiType: string,
+    kpiValue: number,
+    attestation: string,
+    userAddress: string
+  ): Promise<{ txBytes: string; digest: string }> {
+    try {
+      if (!config.earnout.packageId) {
+        throw new Error('EARNOUT_PACKAGE_ID not configured');
+      }
+
+      // Decode base64 attestation to bytes
+      const attestationBytes = Buffer.from(attestation, 'base64');
+
+      // Get all audit records for verification
+      // Note: In production, we should query audit records from blockchain
+      // For now, we pass an empty vector and rely on on-chain verification
+      const auditRecordsVector: never[] = [];
+
+      // Build transaction
+      const tx = new Transaction();
+
+      // Get Sui Clock object
+      const clock = tx.object('0x6');
+
+      // Call submit_kpi_result function
+      tx.moveCall({
+        target: `${config.earnout.packageId}::earnout::submit_kpi_result`,
+        arguments: [
+          tx.object(dealId),
+          tx.pure.u64(periodIndex),
+          tx.pure.string(kpiType),
+          tx.pure.u64(kpiValue),
+          tx.pure.vector('u8', Array.from(attestationBytes)),
+          tx.pure.vector('u8', auditRecordsVector), // Empty vector for now
+          clock,
+        ],
+      });
+
+      // Set sender and build transaction bytes
+      tx.setSender(userAddress);
+
+      const txBytes = await tx.build({ client: this.suiClient });
+      const digest = await tx.getDigest({ client: this.suiClient });
+
+      return {
+        txBytes: Buffer.from(txBytes).toString('base64'),
+        digest,
+      };
+    } catch (error) {
+      console.error('Failed to build submit KPI result transaction:', error);
+      throw new Error(
+        `Failed to build transaction: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  /**
+   * Handle Nautilus KPI calculation request
+   *
+   * This endpoint triggers a mock KPI calculation and returns transaction bytes
+   * for submitting the result on-chain.
+   *
+   * In production, this should:
+   * 1. Call Nautilus TEE to perform secure calculation
+   * 2. Receive attestation from TEE
+   * 3. Build transaction for on-chain submission
+   *
+   * @param req - HTTP request with dealId and periodId
+   * @returns Transaction bytes for submitting KPI result
+   */
+  async handleCalculateKPI(req: NextRequest): Promise<NextResponse> {
+    try {
+      // Parse request body
+      const body = await req.json();
+      const { dealId, periodIndex, kpiType = 'revenue' } = body;
+
+      // Validate required fields
+      if (!dealId || periodIndex === undefined) {
+        return NextResponse.json(
+          { error: 'Missing required fields: dealId, periodIndex' },
+          { status: 400 }
+        );
+      }
+
+      // Verify authentication
+      const authResult = await this.verifySignature(req);
+      if (!authResult.valid) {
+        return NextResponse.json(
+          { error: authResult.error || 'Authentication failed' },
+          { status: 401 }
+        );
+      }
+
+      const userAddress = authResult.address!;
+
+      // TODO: In production, call Nautilus TEE to perform actual calculation
+      // For now, return mock calculation result
+
+      // Mock KPI calculation
+      const mockKPIValue = 1000000; // Example: $1M revenue
+      const mockAttestation = Buffer.from(
+        JSON.stringify({
+          enclaveId: 'mock-enclave-id',
+          timestamp: Date.now(),
+          dealId,
+          periodIndex,
+          kpiType,
+          kpiValue: mockKPIValue,
+        })
+      ).toString('base64');
+
+      // Build transaction for submitting KPI result
+      const { txBytes, digest } = await this.buildSubmitKPIResultTxBytes(
+        dealId,
+        periodIndex,
+        kpiType,
+        mockKPIValue,
+        mockAttestation,
+        userAddress
+      );
+
+      return NextResponse.json({
+        kpiValue: mockKPIValue,
+        kpiType,
+        attestation: mockAttestation,
+        computedAt: Date.now(),
+        nextStep: {
+          action: 'submit_kpi_result',
+          description: 'Sign and execute transaction to submit KPI result on-chain',
+          transaction: {
+            txBytes,
+            digest,
+            description: `Submit ${kpiType} KPI result: ${mockKPIValue}`,
+          },
+        },
+      });
+    } catch (error) {
+      console.error('KPI calculation failed:', error);
+      return NextResponse.json(
+        {
+          error: 'Failed to calculate KPI',
+          details: error instanceof Error ? error.message : 'Unknown error',
+        },
+        { status: 500 }
+      );
+    }
+  }
 }
 
 /**

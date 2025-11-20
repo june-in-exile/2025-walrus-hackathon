@@ -123,27 +123,27 @@ struct KPIResultSubmitted has copy, drop {
   ```typescript
   [
     {
-      "blobId": "string",
-      "dataType": "revenue_journal" | "ebitda_report" | "...",
-      "periodId": "string",
-      "uploadedAt": "string",
-      "uploaderAddress": "string",
-      "size": "number",
-      "metadata": {
-        "filename": "string",
-        "mimeType": "string",
-        "description": "string",
-        "encrypted": "boolean",
-        "encryptionMode": "client_encrypted" | "server_encrypted",
-        "dealId": "string",
-        "periodId": "string",
-        "dataType": "string",
-        "uploadedAt": "string",
-        "uploaderAddress": "string"
+      blobId: "string",
+      dataType: "revenue_journal" | "ebitda_report" | "...",
+      periodId: "string",
+      uploadedAt: "string",
+      uploaderAddress: "string",
+      size: "number",
+      metadata: {
+        filename: "string",
+        mimeType: "string",
+        description: "string",
+        encrypted: "boolean",
+        encryptionMode: "client_encrypted" | "server_encrypted",
+        dealId: "string",
+        periodId: "string",
+        dataType: "string",
+        uploadedAt: "string",
+        uploaderAddress: "string",
       },
-      "downloadUrl": "string"
-    }
-  ]
+      downloadUrl: "string",
+    },
+  ];
   ```
 
 #### `POST /api/v1/nautilus/calculate-kpi`
@@ -327,6 +327,7 @@ public fun verify_nautilus_attestation(
 5. [x] Add accessor functions for DataAuditRecord fields
 
 **Implementation Notes:**
+
 - DataAuditRecord automatically created when blobs are uploaded via `add_walrus_blob`
 - Signature verification uses ed25519 algorithm
 - Added 8 public accessor functions for DataAuditRecord fields
@@ -341,6 +342,7 @@ public fun verify_nautilus_attestation(
 5. [x] Integrate audit status into blob list response
 
 **Implementation Notes:**
+
 - Controller automatically creates DataAuditRecord via contract when blob is uploaded
 - Transaction uses Sui Clock object (0x6) for timestamp
 - Audit status included in `GET /api/v1/deals/{dealId}/blobs` response:
@@ -357,19 +359,45 @@ public fun verify_nautilus_attestation(
 11. [ ] Implement `useAuditRecords` hook
 12. [ ] Update Dashboard to show audit progress
 
-### Phase 4: Nautilus Integration
+### Phase 4: Nautilus Integration ✅ COMPLETED (Backend/Contract)
 
-13. [ ] Design Nautilus enclave calculation logic
-14. [ ] Implement attestation generation
-15. [ ] Add attestation verification to contract
-16. [ ] Add Nautilus API to backend
+13. [x] Design Nautilus enclave calculation logic (mock implementation)
+14. [x] Implement attestation generation (mock attestation)
+15. [x] Add attestation verification to contract
+16. [x] Add Nautilus API to backend
 17. [ ] Frontend integration for KPI calculation trigger
 
-### Phase 5: Settlement Flow Update
+**Implementation Notes:**
+- Smart contract functions implemented:
+  - `verify_nautilus_attestation()` - Basic attestation validation (production TODO: full TEE verification)
+  - `submit_kpi_result()` - Submit KPI result with attestation, requires all period data to be audited
+  - Added 5 accessor functions for KPIResult fields
+- Backend API implemented:
+  - `POST /api/v1/nautilus/calculate-kpi` - Triggers KPI calculation and returns transaction bytes
+  - `buildSubmitKPIResultTxBytes()` - Builds transaction for submitting KPI result on-chain
+- Contract changes:
+  - Added `KPIResult` struct with fields: period_id, kpi_type, value, attestation, computed_at
+  - Added `kpi_result: Option<KPIResult>` to Period struct
+  - Added `KPIResultSubmitted` event
+  - Error codes: EPeriodNotFullyAudited, EInvalidAttestation, EKPIResultAlreadySubmitted, EPeriodNotFound
+- Mock implementation returns placeholder attestation (production needs real Nautilus TEE integration)
 
-18. [ ] Update `settle` function verification logic
+### Phase 5: Settlement Flow Update ⚙️ IN PROGRESS (Contract Completed)
+
+18. [x] Update `settle` function verification logic
 19. [ ] Update `SettlementPanel` component
 20. [ ] End-to-end testing
+
+**Implementation Notes:**
+- Smart contract `settle()` function implemented with comprehensive verification:
+  - Verifies caller is the buyer
+  - Checks period is not already settled
+  - Verifies all data in period has been audited (via `check_period_audit_status`)
+  - Requires valid KPI result with attestation to be submitted
+  - Marks period as settled on-chain
+- Error codes: EAlreadySettled, ENoKPIResult
+- TODO: Implement token transfer logic for actual earn-out payment
+- TODO: Add PeriodSettled event emission
 
 ---
 

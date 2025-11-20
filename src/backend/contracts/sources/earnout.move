@@ -14,6 +14,12 @@ module contracts::earnout {
     const ENotAuthorized: u64 = 4;
     const EDataIdNotFound: u64 = 5;
     const ESignatureMismatch: u64 = 6;
+    const EPeriodNotFullyAudited: u64 = 7;
+    const EInvalidAttestation: u64 = 8;
+    const EKPIResultAlreadySubmitted: u64 = 9;
+    const EPeriodNotFound: u64 = 10;
+    const EAlreadySettled: u64 = 11;
+    const ENoKPIResult: u64 = 12;
 
     // --- Structs ---
 
@@ -34,6 +40,7 @@ module contracts::earnout {
         walrus_blobs: vector<WalrusBlobRef>,
         kpi_proposal: Option<KPIProposal>,
         kpi_attestation: Option<KPIAttestation>,
+        kpi_result: Option<KPIResult>,      // Nautilus TEE calculation result
         is_settled: bool,
     }
 
@@ -57,6 +64,15 @@ module contracts::earnout {
         notes: String,
     }
 
+    // KPI Calculation Result (from Nautilus TEE)
+    public struct KPIResult has store, copy, drop {
+        period_id: String,
+        kpi_type: String,             // e.g., "revenue", "ebitda"
+        value: u64,                   // Calculation result (in smallest unit)
+        attestation: vector<u8>,      // Nautilus TEE attestation
+        computed_at: u64,             // Computation timestamp
+    }
+
     // Data Audit Record Object
     public struct DataAuditRecord has key, store {
         id: UID,
@@ -76,6 +92,14 @@ module contracts::earnout {
     public struct BlobAdded has copy, drop { deal_id: ID, period_id: String, blob_id: String }
     public struct KPIProposed has copy, drop { deal_id: ID, period_id: String, value: u64 }
     public struct KPIAttested has copy, drop { deal_id: ID, period_id: String, approved: bool }
+
+    // KPI Result Event
+    public struct KPIResultSubmitted has copy, drop {
+        deal_id: ID,
+        period_id: String,
+        kpi_value: u64,
+        timestamp: u64,
+    }
 
     // Data Audit Events
     public struct DataAuditRecordCreated has copy, drop {
@@ -160,6 +184,7 @@ module contracts::earnout {
             walrus_blobs: vector::empty(),
             kpi_proposal: option::none(),
             kpi_attestation: option::none(),
+            kpi_result: option::none(),
             is_settled: false,
         };
         vector::push_back(&mut deal.periods, period);
@@ -584,5 +609,182 @@ module contracts::earnout {
 
     public fun audit_record_audit_timestamp(record: &DataAuditRecord): Option<u64> {
         record.audit_timestamp
+    }
+
+    // --- Nautilus TEE Integration Functions ---
+
+    /// Verify Nautilus TEE attestation
+    /// This is a simplified version - production should verify actual TEE signatures
+    public fun verify_nautilus_attestation(
+        attestation: &vector<u8>,
+        _expected_period_id: &String,
+        _expected_kpi_value: u64,
+    ): bool {
+        // In production, this should:
+        // 1. Parse attestation structure
+        // 2. Verify enclave ID is in whitelist
+        // 3. Verify TEE signature
+        // 4. Verify output hash matches expected values
+
+        // For now, we do basic length validation
+        // A real attestation should be at least 32 bytes (signature)
+        let attestation_length = vector::length(attestation);
+
+        // Basic validation: attestation should not be empty
+        if (attestation_length == 0) {
+            return false
+        };
+
+        // TODO: Implement actual TEE attestation verification
+        // - Parse attestation bytes
+        // - Extract and verify enclave ID
+        // - Verify cryptographic signature
+        // - Validate output hash
+
+        true // Placeholder - accept all non-empty attestations for now
+    }
+
+    /// Submit KPI result calculated by Nautilus TEE
+    /// Can only be called by Buyer or system account
+    /// Requires all data in the period to be audited first
+    public fun submit_kpi_result(
+        deal: &mut Deal,
+        period_index: u64,
+        kpi_type: String,
+        kpi_value: u64,
+        attestation: vector<u8>,
+        audit_records: &vector<DataAuditRecord>,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ) {
+        // Only buyer can submit KPI result
+        let sender = tx_context::sender(ctx);
+        assert!(sender == deal.buyer, ENotBuyer);
+
+        // Get deal_id early before borrowing
+        let deal_id = object::id(deal);
+
+        // Get the period
+        let periods_len = vector::length(&deal.periods);
+        assert!(period_index < periods_len, EPeriodNotFound);
+        let period = vector::borrow_mut(&mut deal.periods, period_index);
+
+        // Check if KPI result already submitted
+        assert!(option::is_none(&period.kpi_result), EKPIResultAlreadySubmitted);
+
+        // Verify all data in period is audited
+        let (total_count, _audited_count, is_ready) = check_period_audit_status(
+            deal_id,
+            period.id,
+            audit_records
+        );
+        assert!(is_ready && total_count > 0, EPeriodNotFullyAudited);
+
+        // Verify Nautilus attestation
+        let is_valid = verify_nautilus_attestation(
+            &attestation,
+            &period.id,
+            kpi_value
+        );
+        assert!(is_valid, EInvalidAttestation);
+
+        // Create and store KPI result
+        let timestamp = clock::timestamp_ms(clock);
+        let kpi_result = KPIResult {
+            period_id: period.id,
+            kpi_type,
+            value: kpi_value,
+            attestation,
+            computed_at: timestamp,
+        };
+        period.kpi_result = option::some(kpi_result);
+
+        // Emit event
+        event::emit(KPIResultSubmitted {
+            deal_id,
+            period_id: period.id,
+            kpi_value,
+            timestamp,
+        });
+    }
+
+    // --- Accessor Functions for KPIResult ---
+
+    public fun kpi_result_period_id(result: &KPIResult): String {
+        result.period_id
+    }
+
+    public fun kpi_result_kpi_type(result: &KPIResult): String {
+        result.kpi_type
+    }
+
+    public fun kpi_result_value(result: &KPIResult): u64 {
+        result.value
+    }
+
+    public fun kpi_result_attestation(result: &KPIResult): vector<u8> {
+        result.attestation
+    }
+
+    public fun kpi_result_computed_at(result: &KPIResult): u64 {
+        result.computed_at
+    }
+
+    // --- Settlement Functions ---
+
+    /// Execute earn-out settlement for a period
+    /// Requires:
+    /// 1. All data in period must be audited
+    /// 2. Valid KPI result must be submitted with attestation
+    /// 3. Only buyer can trigger settlement
+    /// 4. Period must not be already settled
+    public fun settle(
+        deal: &mut Deal,
+        period_index: u64,
+        audit_records: &vector<DataAuditRecord>,
+        ctx: &mut TxContext
+    ) {
+        // Only buyer can trigger settlement
+        let sender = tx_context::sender(ctx);
+        assert!(sender == deal.buyer, ENotBuyer);
+
+        // Get deal_id early before borrowing
+        let deal_id = object::id(deal);
+
+        // Get the period
+        let periods_len = vector::length(&deal.periods);
+        assert!(period_index < periods_len, EPeriodNotFound);
+        let period = vector::borrow_mut(&mut deal.periods, period_index);
+
+        // Check if period is already settled
+        assert!(!period.is_settled, EAlreadySettled);
+
+        // Verify all data in period is audited
+        let (total_count, _audited_count, is_ready) = check_period_audit_status(
+            deal_id,
+            period.id,
+            audit_records
+        );
+        assert!(is_ready && total_count > 0, EPeriodNotFullyAudited);
+
+        // Verify KPI result exists
+        assert!(option::is_some(&period.kpi_result), ENoKPIResult);
+
+        // Mark period as settled
+        period.is_settled = true;
+
+        // TODO: In production, implement actual token transfer logic here
+        // For example:
+        // - Calculate earn-out amount based on KPI value
+        // - Transfer tokens from escrow to seller
+        // - Emit settlement event with transfer details
+
+        // Emit settlement event (not yet defined in events)
+        // event::emit(PeriodSettled {
+        //     deal_id,
+        //     period_id: period.id,
+        //     kpi_value: kpi_result_value(&option::borrow(&period.kpi_result)),
+        //     timestamp: clock::timestamp_ms(clock),
+        // });
     }
 }

@@ -127,14 +127,6 @@ export default function DealDashboardPage() {
                 </span>
               </div>
             </div>
-
-            {dealInfo.status === 'draft' && currentRole === 'buyer' && (
-              <Button asChild>
-                <Link href={`/deals/${dealId}/setup`}>
-                  Configure Parameters
-                </Link>
-              </Button>
-            )}
           </div>
 
           {/* Pending Actions Alert */}
@@ -184,16 +176,9 @@ export default function DealDashboardPage() {
               <Card>
                 <CardContent className="pt-6 pb-6">
                   <div className="text-center py-8">
-                    <p className="text-muted-foreground mb-4">
-                      No periods configured yet
+                    <p className="text-muted-foreground">
+                      No periods configured yet. Periods will be created manually as the earn-out agreement progresses.
                     </p>
-                    {currentRole === 'buyer' && dealInfo.status === 'draft' && (
-                      <Button asChild>
-                        <Link href={`/deals/${dealId}/setup`}>
-                          Set Up Periods
-                        </Link>
-                      </Button>
-                    )}
                   </div>
                 </CardContent>
               </Card>

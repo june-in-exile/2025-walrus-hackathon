@@ -20,8 +20,6 @@ export function Header() {
 
   const navLinks = [
     { href: '/deals', label: 'My Deals' },
-    { href: '/settlements', label: 'Settlements' },
-    { href: '/reviews', label: 'Reviews' },
     { href: '/api-docs', label: 'API Docs' },
   ];
 

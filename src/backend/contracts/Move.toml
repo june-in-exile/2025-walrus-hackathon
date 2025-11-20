@@ -1,0 +1,13 @@
+[package]
+name = "contracts"
+edition = "2024.beta"
+version = "0.0.1"
+
+[dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/testnet" }
+
+[addresses]
+contracts = "0x0"
+# ObjectID = "0x59823c72b78c56e2a0fb1ac9ae2fbefbfc6cc5a08c48692db1a9268c9d706b6e"
+# PackageID = "0x0870f322afea4ff897e855b74d200d14893c701b50678a8a9151ebf2f56d4848"
+# DealID = "0x691ada0790da256a0a54c6dda2efdfffd90e0822efeff8ebc5078370c0ec2fb0"

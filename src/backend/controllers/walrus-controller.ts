@@ -338,18 +338,16 @@ export class WalrusController {
   }
 
   /**
-   * Handle file download with hybrid decryption mode
+   * Handle file download - always returns ciphertext for frontend decryption
    *
    * @param request - NextRequest
    * @param blobId - Blob ID to download
-   * @param mode - Decryption mode
    * @param dealId - Deal ID for authorization
-   * @returns Downloaded file
+   * @returns Downloaded encrypted file with Seal policy headers
    */
   async handleDownload(
     request: NextRequest,
     blobId: string,
-    mode: EncryptionMode,
     dealId: string | null
   ): Promise<NextResponse> {
     try {
@@ -421,35 +419,27 @@ export class WalrusController {
       const encryptedData = downloadResult.data;
       const blobMetadata = downloadResult.metadata;
 
-      // Process based on decryption mode
-      // Both modes return ciphertext for frontend decryption
-      // The difference is in upload: client_encrypted = frontend encrypts, server_encrypted = backend encrypts
+      // Always return ciphertext for frontend decryption
+      // Frontend will use Seal SDK to decrypt with proper access control
       const dataToReturn: Buffer = encryptedData;
 
-      if (mode === 'server_encrypted') {
-        console.log('Returning encrypted data (server-encrypted during upload, client decrypts on download)');
-        console.log('Ciphertext size:', dataToReturn.length, 'bytes');
-      } else {
-        // Client-side encryption mode (default)
-        console.log('Returning encrypted data (client-encrypted during upload, client decrypts on download)');
-        console.log('Ciphertext size:', dataToReturn.length, 'bytes');
-      }
+      console.log('Returning encrypted data for client-side decryption');
+      console.log('Ciphertext size:', dataToReturn.length, 'bytes');
 
       // Build response headers with metadata
       const headers: Record<string, string> = {
         'Content-Type': blobMetadata.mimeType || 'application/octet-stream',
         'Content-Length': dataToReturn.length.toString(),
         'X-Blob-Id': blobId,
-        'X-Encryption-Mode': mode, // Current decryption mode
-        'X-Original-Encryption-Mode': blobMetadata.encryptionMode, // Original encryption mode
+        'X-Original-Encryption-Mode': blobMetadata.encryptionMode, // How it was encrypted during upload
         'X-Data-Type': blobMetadata.dataType,
         'X-Period-Id': blobMetadata.periodId,
         'X-Uploaded-At': blobMetadata.uploadedAt,
         'X-Uploader-Address': blobMetadata.uploaderAddress,
       };
 
-      // Add Seal policy information for client-side decryption (both modes)
-      // Both modes require frontend to decrypt, so always provide Seal policy headers
+      // Add Seal policy information for client-side decryption
+      // Frontend needs these to decrypt using Seal SDK
       if (config.seal.packageId) {
         headers['X-Seal-Package-Id'] = config.seal.packageId;
         headers['X-Seal-Whitelist-Id'] = whitelistObjectId; // dealId

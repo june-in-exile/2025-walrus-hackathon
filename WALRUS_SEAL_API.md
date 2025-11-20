@@ -140,7 +140,7 @@ Content-Type: multipart/form-data
 
 ### GET /api/v1/walrus/download/{blobId}
 
-**Function:** Download file from Walrus
+**Function:** Download encrypted file from Walrus (frontend decryption)
 
 **Path Parameters:**
 
@@ -148,7 +148,6 @@ Content-Type: multipart/form-data
 
 **Query Parameters:**
 
-- `mode`: `client_encrypted` | `server_encrypted` (default: `client_encrypted`)
 - `dealId`: Deal ID (required for authorization)
 
 **Headers:**
@@ -166,7 +165,6 @@ Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
 Content-Length: 1024
 Content-Disposition: attachment; filename*=UTF-8''Q4-2024-revenue.xlsx
 X-Blob-Id: ABC123...
-X-Encryption-Mode: client_encrypted
 X-Original-Encryption-Mode: client_encrypted
 X-Seal-Package-Id: 0x8a211625...
 X-Seal-Whitelist-Id: 0x1234...abcd
@@ -178,7 +176,7 @@ X-Uploader-Address: 0x1234...abcd
 X-Description: Q4 2024 revenue journal (optional)
 X-Custom-Data-Type: inventory_report (optional, when dataType is "custom")
 
-[Binary encrypted data - requires frontend Seal SDK to decrypt]
+[Binary encrypted data - frontend must decrypt using Seal SDK]
 ```
 
 **Metadata Headers:**
@@ -192,10 +190,9 @@ X-Custom-Data-Type: inventory_report (optional, when dataType is "custom")
 | X-Period-Id                | Period identifier                      | Yes            |
 | X-Uploaded-At              | Upload timestamp (ISO 8601)            | Yes            |
 | X-Uploader-Address         | Sui address of uploader                | Yes            |
-| X-Encryption-Mode          | Current decryption mode (request mode) | Yes            |
 | X-Original-Encryption-Mode | Original encryption mode (from upload) | Yes            |
-| X-Seal-Package-Id          | Seal package ID for decryption         | Yes (both modes) |
-| X-Seal-Whitelist-Id        | Whitelist object ID for seal_approve   | Yes (both modes) |
+| X-Seal-Package-Id          | Seal package ID for decryption         | Yes            |
+| X-Seal-Whitelist-Id        | Whitelist object ID for seal_approve   | Yes            |
 | X-Description              | File description                       | Optional       |
 | X-Custom-Data-Type         | Custom data type name                  | Optional       |
 
@@ -246,11 +243,11 @@ curl -X POST "http://localhost:3000/api/v1/walrus/upload?mode=client_encrypted" 
 # Generate timestamp for signature
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
 
-curl "http://localhost:3000/api/v1/walrus/download/{blobId}?mode=client_encrypted&dealId=0xdeal123" \
+curl "http://localhost:3000/api/v1/walrus/download/{blobId}?dealId=0xdeal123" \
   -H "X-Sui-Address: 0x1234..." \
   -H "X-Sui-Signature: test_sig" \
   -H "X-Sui-Signature-Message: $TIMESTAMP" \
-  --output downloaded.bin
+  --output encrypted.bin
 ```
 
 ### Testing with Jest/Vitest
@@ -489,7 +486,7 @@ async function uploadWithAuth(
 - The message must be an ISO 8601 timestamp string
 - Backend uses `@mysten/sui/verify` to cryptographically verify signatures
 
-### Client-Encrypted Mode (Recommended)
+### Client-Encrypted Mode (Recommended - Frontend Encrypts)
 
 **Upload Flow:**
 
@@ -550,7 +547,7 @@ async function uploadEncryptedFile(
 }
 ```
 
-**Download Flow:**
+**Download Flow (All Modes):**
 
 ```typescript
 async function downloadAndDecrypt(
@@ -559,10 +556,10 @@ async function downloadAndDecrypt(
   userAddress: string,
   sealClient: SealClient
 ) {
-  // 1. Download ciphertext
+  // 1. Download ciphertext (always encrypted, regardless of upload mode)
   const authHeaders = await createAuthHeaders(userAddress);
   const response = await fetch(
-    `/api/v1/walrus/download/${blobId}?mode=client_encrypted&dealId=${dealId}`,
+    `/api/v1/walrus/download/${blobId}?dealId=${dealId}`,
     {
       headers: authHeaders,
     }
@@ -617,9 +614,9 @@ async function downloadAndDecrypt(
 }
 ```
 
-### Server-Encrypted Mode (Simplified Upload)
+### Server-Encrypted Mode (Simplified Upload - Backend Encrypts)
 
-**Key Point**: Both modes now return ciphertext for frontend decryption. The difference is only in who encrypts during upload.
+**Key Point**: Upload is simplified (backend encrypts), but download always requires frontend decryption.
 
 ```typescript
 // Upload (backend encrypts)
@@ -646,45 +643,19 @@ async function uploadPlaintext(
   return response.json();
 }
 
-// Download (frontend decrypts - same as client_encrypted mode)
-async function downloadAndDecrypt(
-  blobId: string,
-  dealId: string,
-  userAddress: string,
-  sealClient: SealClient
-) {
-  const authHeaders = await createAuthHeaders(userAddress);
-
-  // 1. Download ciphertext
-  const response = await fetch(
-    `/api/v1/walrus/download/${blobId}?mode=server_encrypted&dealId=${dealId}`,
-    {
-      headers: authHeaders,
-    }
-  );
-
-  const ciphertext = new Uint8Array(await response.arrayBuffer());
-
-  // 2. Extract Seal policy info from response headers
-  const packageId = response.headers.get("X-Seal-Package-Id");
-  const whitelistId = response.headers.get("X-Seal-Whitelist-Id");
-
-  // 3. Decrypt using Seal SDK (same as client_encrypted mode)
-  // ... (see Client-Encrypted Mode download flow for full implementation)
-
-  return plaintext;
-}
+// Download - Same as client_encrypted mode (see above section)
+// Frontend always decrypts using Seal SDK, regardless of upload mode
 ```
 
 **When to Use `server_encrypted` Mode:**
 
 - ✅ Simplifying initial MVP development (skip frontend Seal integration for uploads)
-- ✅ Mobile apps where Seal SDK integration is challenging
+- ✅ Mobile apps where Seal SDK integration is challenging for encryption
 - ✅ Rapid prototyping where upload simplicity is prioritized
 - ❌ High-security scenarios requiring zero-knowledge uploads
 - ❌ When backend trust is not acceptable during upload phase
 
-**Note**: The download flow for `server_encrypted` mode is identical to `client_encrypted` mode - both require frontend Seal SDK integration for decryption.
+**Important**: Download flow is identical for both modes - frontend must integrate Seal SDK for decryption.
 
 ---
 

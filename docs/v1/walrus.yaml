@@ -239,45 +239,36 @@ paths:
 
   /walrus/download/{blobId}:
     get:
-      summary: Download file from Walrus (Hybrid Decryption Mode)
+      summary: Download encrypted file from Walrus (Frontend Decryption)
       description: |
-        **Purpose**: Download financial documents from Walrus with flexible decryption
+        **Purpose**: Download encrypted financial documents from Walrus for frontend decryption
 
-        **Decryption Modes** (controlled by `mode` query parameter):
+        **Download Flow**:
+        1. Frontend: Requests blobId with user's Sui address
+        2. Backend: Verifies access → Downloads ciphertext from Walrus → Returns ciphertext
+        3. Frontend: Uses `@mysten/seal` SDK to decrypt locally
 
-        **Mode A: client_encrypted (Default, Recommended)**
-        - Backend downloads ciphertext from Walrus and returns it to frontend.
-        - Frontend decrypts using `@mysten/seal` SDK with the Seal Key Server.
-        - To perform client-side decryption, the frontend must use the deal's access control policy, which can be retrieved from the `GET /deals/{dealId}/seal-policy` endpoint.
-        - Highest security: Backend never sees plaintext (neither upload nor download).
-        - Fully Web3: User controls their own encryption and decryption.
+        **Encryption Transparency**:
+        - The response header `X-Original-Encryption-Mode` indicates how the file was encrypted during upload:
+          - `client_encrypted`: Frontend encrypted the file before upload
+          - `server_encrypted`: Backend encrypted the file during upload
+        - Regardless of upload method, **frontend always decrypts** using Seal SDK
 
-        Download Flow:
-        1. Frontend: Requests blobId with user's Sui address.
-        2. Backend: Verifies access → Downloads from Walrus → Returns ciphertext.
-        3. Frontend: Fetches Seal Policy → Requests decryption key from Seal Key Server → Decrypts locally.
-
-        **Mode B: server_encrypted (Convenience Mode)**
-        - Backend downloads ciphertext from Walrus and returns it to frontend.
-        - Frontend decrypts using `@mysten/seal` SDK with the Seal Key Server.
-        - Difference from Mode A: File was encrypted by backend during upload (not frontend).
-        - Simplified upload: Frontend doesn't need Seal SDK for encryption.
-        - Trade-off: Backend can access plaintext during upload only (not download).
-
-        Download Flow:
-        1. Frontend: Requests blobId with user's Sui address.
-        2. Backend: Verifies access → Downloads from Walrus → Returns ciphertext.
-        3. Frontend: Uses Seal SDK to decrypt locally (same as Mode A).
+        **Seal Policy Information**:
+        - Backend provides `X-Seal-Package-Id` and `X-Seal-Whitelist-Id` headers
+        - Frontend uses these to request decryption keys from Seal Key Servers
+        - Access control is enforced by the whitelist Move contract on Sui blockchain
 
         **Access Control**:
-        - Verification: User must be buyer/seller/auditor in the specified deal.
-        - On-chain check: Backend queries Sui blockchain to verify user's role.
-        - Seal Policy: Access is governed by the `earnout_seal_policy` retrieved via `GET /deals/{dealId}/seal-policy`.
+        - Verification: User must be buyer/seller/auditor in the specified deal
+        - On-chain check: Backend queries Sui blockchain to verify user's role via whitelist
+        - Only authorized users can decrypt the data
 
-        **Security Notes**:
-        - All access attempts are logged for audit trail.
-        - Invalid access attempts return 403 Forbidden.
-        - Decryption keys are never stored, only fetched on-demand from Seal Key Servers.
+        **Security Features**:
+        - Backend never decrypts or sees plaintext during download
+        - All access attempts are logged for audit trail
+        - Invalid access attempts return 403 Forbidden
+        - Decryption keys are fetched on-demand from Seal Key Servers (not stored)
       operationId: downloadFromWalrus
       tags:
         - Walrus
@@ -289,17 +280,6 @@ paths:
             type: string
           description: Walrus blob ID to download
           example: "blob_2Nf8pQz3Xm7Yk5Rd9Wv1Bc6Lt4Hs"
-        - name: mode
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: [client_encrypted, server_encrypted]
-            default: client_encrypted
-          description: |
-            Decryption mode (both modes return ciphertext for frontend decryption):
-            - `client_encrypted`: File encrypted by frontend during upload (default, most secure)
-            - `server_encrypted`: File encrypted by backend during upload (simplified upload)
         - name: dealId
           in: query
           required: true
@@ -338,11 +318,6 @@ paths:
               schema:
                 type: string
               description: Walrus blob ID
-            X-Encryption-Mode:
-              schema:
-                type: string
-                enum: [client_encrypted, server_encrypted]
-              description: Current decryption mode (from request)
             X-Original-Encryption-Mode:
               schema:
                 type: string
@@ -351,11 +326,11 @@ paths:
             X-Seal-Package-Id:
               schema:
                 type: string
-              description: Seal package ID for client-side decryption (both modes, always present)
+              description: Seal package ID for client-side decryption (required for Seal SDK)
             X-Seal-Whitelist-Id:
               schema:
                 type: string
-              description: Whitelist object ID for seal_approve transaction (both modes, always present)
+              description: Whitelist object ID for seal_approve transaction (access control)
             X-Data-Type:
               schema:
                 type: string
@@ -390,13 +365,7 @@ paths:
               schema:
                 type: string
                 format: binary
-              examples:
-                client_encrypted:
-                  summary: Client-encrypted mode (frontend encrypted during upload)
-                  value: "[Binary encrypted data from Walrus - requires frontend Seal SDK to decrypt]"
-                server_encrypted:
-                  summary: Server-encrypted mode (backend encrypted during upload)
-                  value: "[Binary encrypted data from Walrus - requires frontend Seal SDK to decrypt]"
+              example: "[Binary encrypted data from Walrus - requires frontend Seal SDK to decrypt]"
         "400":
           description: Invalid request
           content:

@@ -1,20 +1,18 @@
 /**
  * Walrus Download API Route
  *
- * GET /api/v1/walrus/download/{blobId}?mode=client_encrypted|server_encrypted&dealId=...
+ * GET /api/v1/walrus/download/{blobId}?dealId=...
  *
- * Handles file downloads from Walrus with hybrid decryption support.
+ * Downloads encrypted file from Walrus. Frontend is responsible for decryption using Seal SDK.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { walrusController } from '@/src/backend/controllers/walrus-controller';
-import { config } from '@/src/shared/config/env';
-import type { EncryptionMode } from '@/src/shared/types/walrus';
 
 /**
  * GET /api/v1/walrus/download/{blobId}
  *
- * Download file from Walrus with optional server-side decryption
+ * Download encrypted file from Walrus (frontend decrypts)
  */
 export async function GET(
   request: NextRequest,
@@ -38,43 +36,7 @@ export async function GET(
 
     // Get query parameters
     const searchParams = request.nextUrl.searchParams;
-    const modeParam = searchParams.get('mode') || config.app.defaultUploadMode;
     const dealId = searchParams.get('dealId');
-
-    // Validate mode parameter
-    const validModes: EncryptionMode[] = ['client_encrypted', 'server_encrypted'];
-    if (!validModes.includes(modeParam as EncryptionMode)) {
-      return NextResponse.json(
-        {
-          error: 'ValidationError',
-          message: `Invalid decryption mode. Must be one of: ${validModes.join(', ')}`,
-          statusCode: 400,
-          details: {
-            providedMode: modeParam,
-            validModes,
-          },
-        },
-        { status: 400 }
-      );
-    }
-
-    const mode = modeParam as EncryptionMode;
-
-    // Check if server decryption is enabled
-    if (mode === 'server_encrypted' && !config.app.enableServerEncryption) {
-      return NextResponse.json(
-        {
-          error: 'ForbiddenError',
-          message: 'Server-side decryption is disabled',
-          statusCode: 403,
-          details: {
-            reason: 'ENABLE_SERVER_ENCRYPTION is set to false',
-            suggestion: 'Use mode=client_encrypted or enable server encryption in configuration',
-          },
-        },
-        { status: 403 }
-      );
-    }
 
     // Validate dealId is provided
     if (!dealId) {
@@ -84,7 +46,7 @@ export async function GET(
           message: 'dealId query parameter is required for authorization',
           statusCode: 400,
           details: {
-            example: `/api/v1/walrus/download/${blobId}?dealId=0x1234...&mode=${mode}`,
+            example: `/api/v1/walrus/download/${blobId}?dealId=0x1234...`,
           },
         },
         { status: 400 }
@@ -92,7 +54,7 @@ export async function GET(
     }
 
     // Delegate to controller
-    return await walrusController.handleDownload(request, blobId, mode, dealId);
+    return await walrusController.handleDownload(request, blobId, dealId);
   } catch (error) {
     console.error('Download route error:', error);
 

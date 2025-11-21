@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { FileText, Trash2, Download, Loader2 } from 'lucide-react';
+import { useSuiClient, useCurrentAccount, useSignPersonalMessage } from '@mysten/dapp-kit';
 import { decryptData } from '@/src/frontend/lib/seal';
 
 interface UploadedFile {
@@ -29,7 +30,16 @@ export function UploadedFilesList({
   const [downloadStatus, setDownloadStatus] = useState<Record<number, DownloadStatus>>({});
   const [downloadError, setDownloadError] = useState<Record<number, string | null>>({});
 
+  const suiClient = useSuiClient();
+  const currentAccount = useCurrentAccount();
+  const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
+
   const handleDownload = async (index: number, blobId: string, filename: string) => {
+    if (!currentAccount?.address) {
+      setDownloadError(prev => ({ ...prev, [index]: 'Please connect your wallet first.' }));
+      return;
+    }
+
     setDownloadStatus(prev => ({ ...prev, [index]: 'downloading' }));
     setDownloadError(prev => ({ ...prev, [index]: null }));
 
@@ -41,9 +51,26 @@ export function UploadedFilesList({
       }
 
       const encryptedBuffer = await response.arrayBuffer();
-      const decryptedBuffer = await decryptData(encryptedBuffer);
 
-      const decryptedBlob = new Blob([decryptedBuffer]);
+      // Get Seal configuration from environment
+      const packageId = process.env.NEXT_PUBLIC_SEAL_PACKAGE_ID;
+      const whitelistObjectId = process.env.NEXT_PUBLIC_SEAL_POLICY_OBJECT_ID;
+
+      if (!packageId || !whitelistObjectId) {
+        throw new Error('Seal decryption is not configured. Please set NEXT_PUBLIC_SEAL_PACKAGE_ID and NEXT_PUBLIC_SEAL_POLICY_OBJECT_ID.');
+      }
+
+      const decryptedBuffer = await decryptData(
+        suiClient,
+        encryptedBuffer,
+        whitelistObjectId,
+        packageId,
+        currentAccount.address,
+        signPersonalMessage
+      );
+
+      // Convert Uint8Array to Blob
+      const decryptedBlob = new Blob([new Uint8Array(decryptedBuffer)]);
       const url = URL.createObjectURL(decryptedBlob);
       const a = document.createElement('a');
       a.href = url;
@@ -54,10 +81,11 @@ export function UploadedFilesList({
       URL.revokeObjectURL(url);
 
       setDownloadStatus(prev => ({ ...prev, [index]: 'idle' }));
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Download failed:', e);
       setDownloadStatus(prev => ({ ...prev, [index]: 'error' }));
-      setDownloadError(prev => ({ ...prev, [index]: e.message || 'An unexpected error occurred.' }));
+      const errorMessage = e instanceof Error ? e.message : 'An unexpected error occurred.';
+      setDownloadError(prev => ({ ...prev, [index]: errorMessage }));
       // Reset error after a few seconds
       setTimeout(() => {
         setDownloadStatus(prev => ({ ...prev, [index]: 'idle' }));

@@ -1,29 +1,30 @@
 import { useCallback, useState } from 'react';
 import { Upload, FileText, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useSuiClient } from '@mysten/dapp-kit';
 import { encryptData } from '@/src/frontend/lib/seal';
 
-interface UploadResult {
-  blobId: string;
-  filename: string;
-}
-
 interface FileUploadZoneProps {
-  onUploadComplete: (result: UploadResult) => void;
+  onFileSelect?: (file: File) => void;
+  onUploadComplete?: (result: { blobId: string; filename: string }) => void;
   disabled?: boolean;
   accept?: string;
   maxSize?: number; // in MB
+  enableEncryption?: boolean;
 }
 
 export function FileUploadZone({
+  onFileSelect,
   onUploadComplete,
   disabled = false,
   accept = '.pdf,.xlsx,.xls,.csv,.doc,.docx',
   maxSize = 50,
+  enableEncryption = false,
 }: FileUploadZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const suiClient = useSuiClient();
 
   const handleDragOver = useCallback(
     (e: React.DragEvent) => {
@@ -51,16 +52,38 @@ export function FileUploadZone({
     setError(null);
     setIsUploading(true);
     try {
-      // 1. Encrypt data
       const fileBuffer = await file.arrayBuffer();
-      const encryptedBuffer = await encryptData(fileBuffer);
-      const encryptedBlob = new Blob([encryptedBuffer]);
+      let blobToUpload: Blob;
 
-      // 2. Prepare form data
+      if (enableEncryption) {
+        // Get Seal configuration from environment
+        const packageId = process.env.NEXT_PUBLIC_SEAL_PACKAGE_ID;
+        const whitelistObjectId = process.env.NEXT_PUBLIC_SEAL_POLICY_OBJECT_ID;
+
+        if (!packageId || !whitelistObjectId) {
+          throw new Error('Seal encryption is not configured. Please set NEXT_PUBLIC_SEAL_PACKAGE_ID and NEXT_PUBLIC_SEAL_POLICY_OBJECT_ID.');
+        }
+
+        // Encrypt data using Seal
+        const encryptedBuffer = await encryptData(
+          suiClient,
+          fileBuffer,
+          whitelistObjectId,
+          packageId
+        );
+
+        // Convert Uint8Array to Blob using Array.from() to avoid TypeScript issues
+        blobToUpload = new Blob([new Uint8Array(encryptedBuffer)], { type: 'application/octet-stream' });
+      } else {
+        // No encryption - upload raw file
+        blobToUpload = new Blob([fileBuffer], { type: file.type || 'application/octet-stream' });
+      }
+
+      // Prepare form data
       const formData = new FormData();
-      formData.append('file', encryptedBlob, file.name);
+      formData.append('file', blobToUpload, file.name);
 
-      // 3. Upload to backend
+      // Upload to backend
       const response = await fetch('/api/v1/walrus/upload', {
         method: 'POST',
         body: formData,
@@ -72,12 +95,13 @@ export function FileUploadZone({
       }
 
       const result = await response.json();
-      
-      // 4. Call onUploadComplete with blobId
-      onUploadComplete({ blobId: result.blobId, filename: file.name });
 
-    } catch (e: any) {
-      setError(e.message || 'An unexpected error occurred during upload.');
+      // Call onUploadComplete with blobId
+      onUploadComplete?.({ blobId: result.blobId, filename: file.name });
+
+    } catch (e: unknown) {
+      const errorMessage = e instanceof Error ? e.message : 'An unexpected error occurred during upload.';
+      setError(errorMessage);
     } finally {
       setIsUploading(false);
     }
@@ -89,6 +113,14 @@ export function FileUploadZone({
       setError(validationError);
       return;
     }
+
+    // If onFileSelect is provided, just pass the file (no upload)
+    if (onFileSelect) {
+      onFileSelect(file);
+      return;
+    }
+
+    // Otherwise, upload the file
     uploadFile(file);
   };
 
@@ -104,7 +136,7 @@ export function FileUploadZone({
         handleFile(files[0]);
       }
     },
-    [disabled, isUploading, onUploadComplete]
+    [disabled, isUploading, onFileSelect, onUploadComplete]
   );
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -112,6 +144,8 @@ export function FileUploadZone({
     if (files && files.length > 0) {
       handleFile(files[0]);
     }
+    // Reset the input so the same file can be selected again
+    e.target.value = '';
   };
 
   const isComponentDisabled = disabled || isUploading;
@@ -148,7 +182,9 @@ export function FileUploadZone({
           {isUploading ? (
             <>
               <Loader2 className="h-10 w-10 text-primary animate-spin" />
-              <p className="text-sm font-medium">Encrypting & Uploading...</p>
+              <p className="text-sm font-medium">
+                {enableEncryption ? 'Encrypting & Uploading...' : 'Uploading...'}
+              </p>
             </>
           ) : isDragging ? (
             <>

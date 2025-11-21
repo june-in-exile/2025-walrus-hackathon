@@ -105,7 +105,7 @@ export function useAuditData(): UseAuditDataReturn {
         // 6. Execute transaction
         toast.info('Please approve the transaction in your wallet');
 
-        const result = await signAndExecuteTransaction(
+        await signAndExecuteTransaction(
           {
             transaction: tx,
           },
@@ -127,8 +127,6 @@ export function useAuditData(): UseAuditDataReturn {
             },
           }
         );
-
-        return result;
       } catch (err) {
         const error = err instanceof Error ? err : new Error('Unknown error');
         setError(error);

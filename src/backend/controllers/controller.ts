@@ -612,7 +612,7 @@ export class WalrusController {
           periodId: metadata?.periodId || onChainBlob.periodId,
           uploadedAt: metadata?.uploadedAt || onChainBlob.uploadedAt,
           uploaderAddress: metadata?.uploaderAddress || onChainBlob.uploaderAddress,
-          size: metadata ? onChainBlob.size : onChainBlob.size,
+          // size is not stored on-chain, omit it
           metadata: metadata || {
             filename: 'unknown',
             mimeType: 'application/octet-stream',

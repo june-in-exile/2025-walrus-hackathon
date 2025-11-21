@@ -12,8 +12,6 @@ module contracts::earnout {
     const EInvalidSignature: u64 = 2;
     const EAlreadyAudited: u64 = 3;
     const ENotAuthorized: u64 = 4;
-    const EDataIdNotFound: u64 = 5;
-    const ESignatureMismatch: u64 = 6;
     const EPeriodNotFullyAudited: u64 = 7;
     const EInvalidAttestation: u64 = 8;
     const EKPIResultAlreadySubmitted: u64 = 9;

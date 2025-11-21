@@ -9,12 +9,12 @@ import { config, debugConfig } from '@/src/shared/config/env';
 
 /**
  * On-chain blob reference from Deal object
+ * Note: periodId is derived from the parent Period struct, not from WalrusBlobRef itself
  */
 export interface OnChainBlobReference {
   blobId: string;
   periodId: string;
   dataType: string;
-  size: number;
   uploadedAt: string;
   uploaderAddress: string;
 }
@@ -56,6 +56,11 @@ export class SuiService {
    * This method fetches the Deal object from Sui blockchain and extracts
    * the list of Walrus blob IDs that have been registered via add_walrus_blob.
    *
+   * Move struct hierarchy:
+   *   Deal { periods: vector<Period> }
+   *   Period { id: String, walrus_blobs: vector<WalrusBlobRef> }
+   *   WalrusBlobRef { blob_id, data_type, uploaded_at, uploader }
+   *
    * @param dealId - Deal object ID on Sui
    * @returns Array of blob IDs registered for this deal
    */
@@ -84,9 +89,6 @@ export class SuiService {
         throw new Error(`Deal not found: ${dealId}`);
       }
 
-      // Extract blob references from Deal object
-      // The exact field structure depends on the Move module definition
-      // Expected structure: Deal { ..., walrus_blobs: vector<BlobReference>, ... }
       const content = dealObject.data.content;
       if (!content || content.dataType !== 'moveObject') {
         throw new Error('Invalid Deal object structure');
@@ -94,18 +96,34 @@ export class SuiService {
 
       const fields = content.fields as Record<string, unknown>;
 
-      // Extract blob IDs from walrus_blobs field
-      // This is a simplified implementation - adjust based on actual Move struct
-      const walrusBlobs = fields.walrus_blobs as Array<{ blobId: string }> | undefined;
+      // Extract periods array from Deal
+      // Move struct: Deal { periods: vector<Period> }
+      const periods = fields.periods as Array<{
+        fields?: {
+          walrus_blobs?: Array<{ fields?: { blob_id?: string } }>;
+        };
+      }> | undefined;
 
-      if (!walrusBlobs || !Array.isArray(walrusBlobs)) {
+      if (!periods || !Array.isArray(periods)) {
         if (debugConfig.sui) {
-          console.log('No walrus_blobs field found in Deal object, returning empty list');
+          console.log('No periods field found in Deal object, returning empty list');
         }
         return [];
       }
 
-      const blobIds = walrusBlobs.map(blob => blob.blobId);
+      // Extract blob IDs from all periods
+      const blobIds: string[] = [];
+      for (const period of periods) {
+        const walrusBlobs = period.fields?.walrus_blobs;
+        if (walrusBlobs && Array.isArray(walrusBlobs)) {
+          for (const blob of walrusBlobs) {
+            const blobId = blob.fields?.blob_id;
+            if (blobId) {
+              blobIds.push(blobId);
+            }
+          }
+        }
+      }
 
       if (debugConfig.sui) {
         console.log(`Found ${blobIds.length} blobs for deal ${dealId}`);
@@ -124,6 +142,11 @@ export class SuiService {
    * Query detailed blob references for a deal
    *
    * Returns full blob reference data including period, data type, etc.
+   *
+   * Move struct hierarchy:
+   *   Deal { periods: vector<Period> }
+   *   Period { id: String, walrus_blobs: vector<WalrusBlobRef> }
+   *   WalrusBlobRef { blob_id, data_type, uploaded_at, uploader }
    *
    * @param dealId - Deal object ID on Sui
    * @returns Array of on-chain blob references
@@ -160,41 +183,52 @@ export class SuiService {
 
       const fields = content.fields as Record<string, unknown>;
 
-      // Extract blob references from walrus_blobs field
-      const walrusBlobs = fields.walrus_blobs as Array<{
-        blob_id?: string;
-        blobId?: string;
-        period_id?: string;
-        periodId?: string;
-        data_type?: string;
-        dataType?: string;
-        size?: number;
-        uploaded_at?: number;
-        uploadedAt?: number;
-        uploader?: string;
-        uploaderAddress?: string;
+      // Extract periods array from Deal
+      // Move struct: Deal { periods: vector<Period> }
+      const periods = fields.periods as Array<{
+        fields?: {
+          id?: string;
+          walrus_blobs?: Array<{
+            fields?: {
+              blob_id?: string;
+              data_type?: string;
+              uploaded_at?: string;
+              uploader?: string;
+            };
+          }>;
+        };
       }> | undefined;
 
-      if (!walrusBlobs || !Array.isArray(walrusBlobs)) {
+      if (!periods || !Array.isArray(periods)) {
         if (debugConfig.sui) {
-          console.log('No walrus_blobs field found in Deal object, returning empty list');
+          console.log('No periods field found in Deal object, returning empty list');
         }
         return [];
       }
 
-      // Map to OnChainBlobReference format
-      const blobReferences: OnChainBlobReference[] = walrusBlobs.map(blob => ({
-        blobId: blob.blob_id || blob.blobId || '',
-        periodId: blob.period_id || blob.periodId || '',
-        dataType: blob.data_type || blob.dataType || '',
-        size: blob.size || 0,
-        uploadedAt: blob.uploaded_at
-          ? new Date(blob.uploaded_at * 1000).toISOString()
-          : blob.uploadedAt
-          ? new Date(blob.uploadedAt).toISOString()
-          : new Date().toISOString(),
-        uploaderAddress: blob.uploader || blob.uploaderAddress || '',
-      }));
+      // Extract blob references from all periods
+      const blobReferences: OnChainBlobReference[] = [];
+      for (const period of periods) {
+        const periodId = period.fields?.id || '';
+        const walrusBlobs = period.fields?.walrus_blobs;
+
+        if (walrusBlobs && Array.isArray(walrusBlobs)) {
+          for (const blob of walrusBlobs) {
+            const blobFields = blob.fields;
+            if (blobFields) {
+              blobReferences.push({
+                blobId: blobFields.blob_id || '',
+                periodId: periodId,  // Derived from parent Period
+                dataType: blobFields.data_type || '',
+                uploadedAt: blobFields.uploaded_at
+                  ? new Date(parseInt(blobFields.uploaded_at)).toISOString()
+                  : new Date().toISOString(),
+                uploaderAddress: blobFields.uploader || '',
+              });
+            }
+          }
+        }
+      }
 
       if (debugConfig.sui) {
         console.log(`Found ${blobReferences.length} blob references for deal ${dealId}`);

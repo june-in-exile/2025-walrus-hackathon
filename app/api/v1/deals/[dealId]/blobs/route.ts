@@ -30,9 +30,8 @@ export async function GET(
           dataType: ref.dataType as DataType, // Assert type to fix mismatch
           uploadedAt: ref.uploadedAt,
           uploaderAddress: ref.uploaderAddress,
-          size: ref.size,
+          // size is not stored on-chain, omit or get from Walrus metadata if needed
           metadata: walrusMetadata,
-          // downloadUrl is not part of BlobReference, so we omit it here
         };
       })
     );

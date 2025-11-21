@@ -85,13 +85,14 @@ export interface BlobMetadata {
 
 /**
  * Reference to a Walrus blob
+ * Note: size is optional because it's not stored on-chain in the Move contract
  */
 export interface BlobReference {
   blobId: string;
   dataType: DataType;
   uploadedAt: string;
   uploaderAddress: string;
-  size: number;
+  size?: number;
   metadata: BlobMetadata;
 }
 
@@ -280,8 +281,8 @@ export interface DealBlobItem {
   uploadedAt: string;
   /** Sui address of uploader */
   uploaderAddress: string;
-  /** File size in bytes */
-  size: number;
+  /** File size in bytes (optional, not stored on-chain) */
+  size?: number;
   /** Detailed metadata */
   metadata: BlobMetadata;
   /** Relative URL to download this blob */

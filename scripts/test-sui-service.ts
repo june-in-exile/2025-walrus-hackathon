@@ -47,7 +47,6 @@ interface UploadedBlob {
   dealId: string;
   periodId: string;
   dataType: string;
-  size: number;
   uploadedAt: string;
   uploaderAddress: string;
 }
@@ -163,7 +162,6 @@ async function uploadTestFile(
     dealId,
     periodId,
     dataType,
-    size: data.length,
     uploadedAt: result.uploadedAt,
     uploaderAddress,
   };
@@ -334,7 +332,6 @@ async function main() {
         blobId: fileA.blobId,
         periodId: fileA.periodId,
         dataType: fileA.dataType,
-        size: fileA.size,
         uploadedAt: fileA.uploadedAt,
         uploaderAddress: fileA.uploaderAddress,
       },
@@ -342,7 +339,6 @@ async function main() {
         blobId: fileB.blobId,
         periodId: fileB.periodId,
         dataType: fileB.dataType,
-        size: fileB.size,
         uploadedAt: fileB.uploadedAt,
         uploaderAddress: fileB.uploaderAddress,
       },
@@ -354,7 +350,6 @@ async function main() {
         blobId: fileC.blobId,
         periodId: fileC.periodId,
         dataType: fileC.dataType,
-        size: fileC.size,
         uploadedAt: fileC.uploadedAt,
         uploaderAddress: fileC.uploaderAddress,
       },

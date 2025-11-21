@@ -1,21 +1,18 @@
-import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Calendar,
-  TrendingUp,
   CheckCircle2,
   FileCheck,
   Target,
-  DollarSign,
-  ChevronDown,
-  ChevronUp,
-  Percent,
+  FileText,
+  FileWarning,
+  Clock,
 } from 'lucide-react';
 import Link from 'next/link';
 import type { PeriodSummary } from '@/src/frontend/lib/api-client';
-import type { PeriodWithKPI } from '@/src/frontend/lib/mock-data';
+import type { PeriodWithKPI, WalrusBlobWithAudit } from '@/src/frontend/lib/mock-data';
 import { mockDeals } from '@/src/frontend/lib/mock-data';
 
 interface PeriodCardProps {
@@ -25,15 +22,22 @@ interface PeriodCardProps {
 }
 
 export function PeriodCard({ period, dealId, userRole }: PeriodCardProps) {
-  const [showExpenseDetails, setShowExpenseDetails] = useState(false);
-
-  // Get KPI data from mock deals
+  // Get period data from mock deals
   const deal = mockDeals.find(d => d.dealId === dealId);
   const periodWithKPI = deal?.periods?.find(p => p.periodId === period.periodId) as PeriodWithKPI | undefined;
 
-  const kpiTarget = deal?.kpiTargetAmount || 900000;
   const isKpiAchieved = periodWithKPI?.kpiAchieved || false;
-  const kpiProgress = periodWithKPI?.kpiProgress || 0;
+
+  // Calculate audit status statistics
+  const walrusBlobs = periodWithKPI?.walrusBlobs as WalrusBlobWithAudit[] | undefined;
+  const auditStats = walrusBlobs?.reduce(
+    (acc, blob) => {
+      const status = blob.reviewStatus || 'pending';
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    },
+    { approved: 0, pending: 0, changes_requested: 0 } as Record<string, number>
+  ) || { approved: 0, pending: 0, changes_requested: 0 };
 
   const formatCurrency = (amount: number | undefined) => {
     if (amount === undefined) return 'N/A';
@@ -88,7 +92,7 @@ export function PeriodCard({ period, dealId, userRole }: PeriodCardProps) {
     if (userRole === 'auditor') {
       return (
         <Button asChild size="sm" variant={hasDocuments ? 'default' : 'outline'} className="w-full">
-          <Link href={`/deals/${dealId}/periods/${period.periodId}/upload`}>
+          <Link href={`/deals/${dealId}/periods/${period.periodId}/review`}>
             <FileCheck className="mr-2 h-4 w-4" />
             {hasDocuments ? 'Review Documents' : 'View Period Details'}
           </Link>
@@ -129,132 +133,65 @@ export function PeriodCard({ period, dealId, userRole }: PeriodCardProps) {
 
       <CardContent>
         <div className="space-y-4">
-          {/* Monthly Revenue */}
-          {periodWithKPI?.monthlyRevenue && (
-            <div className="bg-blue-50 dark:bg-blue-950/20 px-4 py-3 rounded-lg">
+          {/* Documents Upload Status */}
+          {period.dataUploadProgress && period.dataUploadProgress.blobCount > 0 && (
+            <div className="bg-muted/50 rounded-lg p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                  <span className="text-sm font-medium">Monthly Revenue</span>
+                  <FileText className="h-5 w-5 text-primary" />
+                  <span className="text-sm font-medium">Documents Uploaded</span>
                 </div>
-                <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
-                  {formatCurrency(periodWithKPI.monthlyRevenue)}
+                <span className="text-lg font-bold text-primary">
+                  {period.dataUploadProgress.blobCount}
                 </span>
               </div>
             </div>
           )}
 
-          {/* Monthly Expenses (Collapsible) */}
-          {periodWithKPI?.monthlyExpenses && (
-            <div className="border rounded-lg">
-              <button
-                onClick={() => setShowExpenseDetails(!showExpenseDetails)}
-                className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted/50 transition-colors"
-              >
-                <span className="text-sm font-medium">Expense Breakdown</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">
-                    {formatCurrency(
-                      periodWithKPI.monthlyExpenses.depreciation +
-                      periodWithKPI.monthlyExpenses.payroll +
-                      periodWithKPI.monthlyExpenses.overheadAllocation
-                    )}
-                  </span>
-                  {showExpenseDetails ? (
-                    <ChevronUp className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )}
-                </div>
-              </button>
-              {showExpenseDetails && (
-                <div className="px-4 pb-3 space-y-2 text-sm border-t">
-                  <div className="flex items-center justify-between py-2">
-                    <span className="text-muted-foreground">Depreciation</span>
-                    <span className="font-medium">
-                      {formatCurrency(periodWithKPI.monthlyExpenses.depreciation)}
+          {/* Audit Status Statistics */}
+          {walrusBlobs && walrusBlobs.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-sm font-medium mb-2">Audit Status</div>
+              <div className="grid grid-cols-3 gap-2">
+                {/* Approved */}
+                <div className="bg-green-50 dark:bg-green-950/20 rounded-lg p-3 text-center">
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+                    <span className="text-xs font-medium text-green-700 dark:text-green-300">
+                      Approved
                     </span>
                   </div>
-                  <div className="flex items-center justify-between py-2">
-                    <span className="text-muted-foreground">Payroll</span>
-                    <span className="font-medium">
-                      {formatCurrency(periodWithKPI.monthlyExpenses.payroll)}
+                  <div className="text-xl font-bold text-green-600 dark:text-green-400">
+                    {auditStats.approved}
+                  </div>
+                </div>
+
+                {/* Pending */}
+                <div className="bg-yellow-50 dark:bg-yellow-950/20 rounded-lg p-3 text-center">
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <Clock className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+                    <span className="text-xs font-medium text-yellow-700 dark:text-yellow-300">
+                      Pending
                     </span>
                   </div>
-                  <div className="flex items-center justify-between py-2">
-                    <span className="text-muted-foreground">HQ Allocation</span>
-                    <span className="font-medium">
-                      {formatCurrency(periodWithKPI.monthlyExpenses.overheadAllocation)}
+                  <div className="text-xl font-bold text-yellow-600 dark:text-yellow-400">
+                    {auditStats.pending}
+                  </div>
+                </div>
+
+                {/* Changes Requested */}
+                <div className="bg-orange-50 dark:bg-orange-950/20 rounded-lg p-3 text-center">
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <FileWarning className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                    <span className="text-xs font-medium text-orange-700 dark:text-orange-300">
+                      Changes
                     </span>
                   </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Monthly Net Profit */}
-          {periodWithKPI?.monthlyNetProfit !== undefined && (
-            <div className="bg-green-50 dark:bg-green-950/20 px-4 py-3 rounded-lg">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <DollarSign className="h-5 w-5 text-green-600 dark:text-green-400" />
-                  <span className="text-sm font-medium">Monthly Net Profit</span>
-                </div>
-                <span className="text-lg font-bold text-green-600 dark:text-green-400">
-                  {formatCurrency(periodWithKPI.monthlyNetProfit)}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Cumulative Net Profit */}
-          {periodWithKPI?.cumulativeNetProfit !== undefined && (
-            <div className="bg-purple-50 dark:bg-purple-950/20 px-4 py-3 rounded-lg">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Target className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-                  <span className="text-sm font-medium">Cumulative Net Profit</span>
-                </div>
-                <span className="text-lg font-bold text-purple-600 dark:text-purple-400">
-                  {formatCurrency(periodWithKPI.cumulativeNetProfit)}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* KPI Progress Bar */}
-          {periodWithKPI?.kpiProgress !== undefined && (
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <Percent className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">KPI Progress</span>
-                </div>
-                <div className="text-right">
-                  <span className={`text-sm font-bold ${isKpiAchieved ? 'text-green-600' : ''}`}>
-                    {(kpiProgress * 100).toFixed(1)}%
-                  </span>
-                  <div className="text-xs text-muted-foreground">
-                    Target: {formatCurrency(kpiTarget)}
+                  <div className="text-xl font-bold text-orange-600 dark:text-orange-400">
+                    {auditStats.changes_requested}
                   </div>
                 </div>
               </div>
-              <div className="w-full bg-muted rounded-full h-3">
-                <div
-                  className={`h-3 rounded-full transition-all ${
-                    isKpiAchieved ? 'bg-green-600' : 'bg-primary'
-                  }`}
-                  style={{
-                    width: `${Math.min(kpiProgress * 100, 100)}%`,
-                  }}
-                />
-              </div>
-              {isKpiAchieved && (
-                <div className="flex items-center gap-1 mt-2 text-xs font-medium text-green-600">
-                  <CheckCircle2 className="h-3 w-3" />
-                  Target Achieved!
-                </div>
-              )}
             </div>
           )}
 
@@ -280,16 +217,6 @@ export function PeriodCard({ period, dealId, userRole }: PeriodCardProps) {
                   TX: {periodWithKPI.settlement.txHash.slice(0, 20)}...
                 </div>
               )}
-            </div>
-          )}
-
-          {/* Documents Info */}
-          {period.dataUploadProgress && period.dataUploadProgress.blobCount > 0 && (
-            <div className="text-sm text-muted-foreground">
-              <div className="flex items-center justify-between">
-                <span>{period.dataUploadProgress.blobCount} documents uploaded</span>
-                <span>{period.dataUploadProgress.completeness}% complete</span>
-              </div>
             </div>
           )}
 

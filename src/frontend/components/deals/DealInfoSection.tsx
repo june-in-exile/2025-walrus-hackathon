@@ -1,9 +1,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, DollarSign, Users, FileText, TrendingUp, Target, Percent, CheckCircle2 } from 'lucide-react';
+import { Calendar, DollarSign, Users, FileText, TrendingUp, Target, Percent, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
 import type { DashboardResponseDealInfo } from '@/src/frontend/lib/api-client';
 import type { DealWithExtendedFields, PeriodWithKPI } from '@/src/frontend/lib/mock-data';
 import { mockDeals } from '@/src/frontend/lib/mock-data';
+import { calculateTotalMonthlyDepreciation } from '@/src/shared/types/asset';
+import { useState } from 'react';
 
 interface DealInfoSectionProps {
   dealInfo: DashboardResponseDealInfo & {
@@ -70,15 +72,40 @@ export function DealInfoSection({ dealInfo }: DealInfoSectionProps) {
     return `${(value * 100).toFixed(1)}%`;
   };
 
-  // Get KPI summary data from mock deals
+  const [showExpenseDetails, setShowExpenseDetails] = useState(false);
+
+  // Get KPI summary data from mock deals - calculate cumulative across ALL periods
   const deal = mockDeals.find(d => d.dealId === dealInfo.dealId);
-  const periods = deal?.periods as PeriodWithKPI[] | undefined;
-  const lastPeriod = periods?.[periods.length - 1];
-  const cumulativeNetProfit = lastPeriod?.cumulativeNetProfit;
+  const periods = (deal?.periods as PeriodWithKPI[] | undefined) || [];
+
+  // Calculate cumulative financial data across all periods
+  const cumulativeData = periods.reduce(
+    (acc, period) => {
+      return {
+        revenue: acc.revenue + (period.monthlyRevenue || 0),
+        depreciation: acc.depreciation + (period.monthlyExpenses?.depreciation || 0),
+        payroll: acc.payroll + (period.monthlyExpenses?.payroll || 0),
+        overhead: acc.overhead + (period.monthlyExpenses?.overheadAllocation || 0),
+        netProfit: acc.netProfit + (period.monthlyNetProfit || 0),
+      };
+    },
+    { revenue: 0, depreciation: 0, payroll: 0, overhead: 0, netProfit: 0 }
+  );
+
+  const totalExpenses = cumulativeData.depreciation + cumulativeData.payroll + cumulativeData.overhead;
+
+  // Get monthly depreciation from assets metadata
+  const assets = (deal?.metadata as any)?.assets || [];
+  const monthlyDepreciation = calculateTotalMonthlyDepreciation(assets);
+
+  // KPI tracking
   const kpiTarget = deal?.kpiTargetAmount || 900000;
-  const kpiAchieved = lastPeriod?.kpiAchieved || false;
-  const kpiProgress = lastPeriod?.kpiProgress || 0;
-  const settlement = lastPeriod?.settlement;
+  const kpiAchieved = periods.some(p => p.kpiAchieved);
+  const kpiProgress = cumulativeData.netProfit / kpiTarget;
+
+  // Find the period where KPI was achieved (if any)
+  const achievedPeriod = periods.find(p => p.kpiAchieved);
+  const settlement = achievedPeriod?.settlement;
 
   return (
     <div className="space-y-4">
@@ -223,97 +250,154 @@ export function DealInfoSection({ dealInfo }: DealInfoSectionProps) {
         </Card>
       )}
 
-      {/* KPI Summary Card */}
-      {cumulativeNetProfit !== undefined && (
-        <Card className={kpiAchieved ? 'border-green-500 border-2' : ''}>
-          <CardHeader>
+      {/* Cumulative Financial Summary Card */}
+      <Card className={kpiAchieved ? 'border-green-500 border-2' : ''}>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg">Cumulative Financial Summary</CardTitle>
+            {kpiAchieved && (
+              <Badge variant="default" className="bg-green-600">
+                <CheckCircle2 className="mr-1 h-3 w-3" />
+                KPI Achieved
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Total Cumulative Revenue */}
+          <div className="bg-blue-50 dark:bg-blue-950/20 px-4 py-3 rounded-lg">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">KPI Summary</CardTitle>
-              {kpiAchieved && (
-                <Badge variant="default" className="bg-green-600">
-                  <CheckCircle2 className="mr-1 h-3 w-3" />
-                  Achieved
-                </Badge>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Cumulative Net Profit */}
-            <div className="flex items-start gap-3">
-              <TrendingUp className="h-5 w-5 text-purple-600 mt-0.5" />
-              <div className="flex-1">
-                <div className="text-sm font-medium">Total Cumulative Net Profit</div>
-                <div className="text-2xl font-bold text-purple-600">
-                  {formatCurrency(cumulativeNetProfit)}
-                </div>
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                <span className="text-sm font-medium">Total Cumulative Revenue</span>
               </div>
+              <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                {formatCurrency(cumulativeData.revenue)}
+              </span>
             </div>
+          </div>
 
-            {/* KPI Target */}
-            <div className="flex items-start gap-3">
-              <Target className="h-5 w-5 text-muted-foreground mt-0.5" />
-              <div className="flex-1">
-                <div className="text-sm font-medium">KPI Target</div>
-                <div className="text-lg font-semibold">
-                  {formatCurrency(kpiTarget)}
-                </div>
-              </div>
-            </div>
-
-            {/* Achievement Rate */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-sm font-medium">Achievement Rate</div>
-                <span className={`text-lg font-bold ${kpiAchieved ? 'text-green-600' : ''}`}>
-                  {(kpiProgress * 100).toFixed(1)}%
+          {/* Total Cumulative Expenses (Collapsible) */}
+          <div className="border rounded-lg">
+            <button
+              onClick={() => setShowExpenseDetails(!showExpenseDetails)}
+              className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted/50 transition-colors"
+            >
+              <span className="text-sm font-medium">Total Cumulative Expenses</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">
+                  {formatCurrency(totalExpenses)}
                 </span>
+                {showExpenseDetails ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
               </div>
-              <div className="w-full bg-muted rounded-full h-3">
-                <div
-                  className={`h-3 rounded-full transition-all ${
-                    kpiAchieved ? 'bg-green-600' : 'bg-primary'
-                  }`}
-                  style={{
-                    width: `${Math.min(kpiProgress * 100, 100)}%`,
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Settlement Info (if achieved) */}
-            {kpiAchieved && settlement && (
-              <div className="pt-4 border-t space-y-2">
-                <div className="flex items-center gap-2 text-green-700 dark:text-green-400 font-semibold">
-                  <CheckCircle2 className="h-5 w-5" />
-                  <span>Settlement Completed</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Amount Paid to Seller</span>
-                  <span className="text-xl font-bold text-green-600">
-                    {formatCurrency(settlement.payoutAmount)}
+            </button>
+            {showExpenseDetails && (
+              <div className="px-4 pb-3 space-y-2 text-sm border-t">
+                <div className="flex items-center justify-between py-2">
+                  <span className="text-muted-foreground">Depreciation</span>
+                  <span className="font-medium">
+                    {formatCurrency(cumulativeData.depreciation)}
                   </span>
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Settlement Date</span>
-                  <span>{formatDate(settlement.settledAt)}</span>
+                <div className="flex items-center justify-between py-2">
+                  <span className="text-muted-foreground">Payroll</span>
+                  <span className="font-medium">
+                    {formatCurrency(cumulativeData.payroll)}
+                  </span>
                 </div>
-                {settlement.txHash && (
-                  <div className="text-xs text-muted-foreground font-mono pt-2 border-t">
-                    Transaction Hash: {settlement.txHash}
+                <div className="flex items-center justify-between py-2">
+                  <span className="text-muted-foreground">HQ Allocation</span>
+                  <span className="font-medium">
+                    {formatCurrency(cumulativeData.overhead)}
+                  </span>
+                </div>
+                {monthlyDepreciation > 0 && (
+                  <div className="pt-2 border-t text-xs text-muted-foreground">
+                    Monthly Depreciation (from assets): {formatCurrency(monthlyDepreciation)}
                   </div>
                 )}
               </div>
             )}
+          </div>
 
-            {/* Status Message */}
-            {!kpiAchieved && (
-              <div className="text-sm text-muted-foreground italic">
-                KPI target not yet achieved. Continue monitoring period performance.
+          {/* Total Cumulative Net Profit */}
+          <div className="bg-purple-50 dark:bg-purple-950/20 px-4 py-3 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Target className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                <span className="text-sm font-medium">Total Cumulative Net Profit</span>
               </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+              <span className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                {formatCurrency(cumulativeData.netProfit)}
+              </span>
+            </div>
+          </div>
+
+          {/* KPI Target */}
+          <div className="flex items-center justify-between px-2">
+            <span className="text-sm text-muted-foreground">KPI Target</span>
+            <span className="text-lg font-semibold">
+              {formatCurrency(kpiTarget)}
+            </span>
+          </div>
+
+          {/* Achievement Rate Progress Bar */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm font-medium">KPI Achievement Rate</div>
+              <span className={`text-lg font-bold ${kpiAchieved ? 'text-green-600' : ''}`}>
+                {(kpiProgress * 100).toFixed(1)}%
+              </span>
+            </div>
+            <div className="w-full bg-muted rounded-full h-3">
+              <div
+                className={`h-3 rounded-full transition-all ${
+                  kpiAchieved ? 'bg-green-600' : 'bg-primary'
+                }`}
+                style={{
+                  width: `${Math.min(kpiProgress * 100, 100)}%`,
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Settlement Info (if achieved) */}
+          {kpiAchieved && settlement && (
+            <div className="pt-4 border-t space-y-2">
+              <div className="flex items-center gap-2 text-green-700 dark:text-green-400 font-semibold">
+                <CheckCircle2 className="h-5 w-5" />
+                <span>Settlement Completed</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Amount Paid to Seller</span>
+                <span className="text-xl font-bold text-green-600">
+                  {formatCurrency(settlement.payoutAmount)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Settlement Date</span>
+                <span>{formatDate(settlement.settledAt)}</span>
+              </div>
+              {settlement.txHash && (
+                <div className="text-xs text-muted-foreground font-mono pt-2 border-t">
+                  Transaction Hash: {settlement.txHash}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Status Message */}
+          {!kpiAchieved && (
+            <div className="text-sm text-muted-foreground italic">
+              KPI target not yet achieved. Continue uploading period documents.
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

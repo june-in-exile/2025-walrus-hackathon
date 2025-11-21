@@ -14,6 +14,8 @@ import type {
   PeriodStatusEnum,
   DashboardResponse,
 } from './api-client';
+import type { AssetReference } from '@/src/shared/types/asset';
+import { getFixedAssets } from './loadFixedAssets';
 
 // Mock Sui addresses
 export const MOCK_ADDRESSES = {
@@ -21,6 +23,16 @@ export const MOCK_ADDRESSES = {
   seller: '0xef012345678890abcdef1234567890abcdef1234567890abcdef1234567890ef',
   auditor: '0x9876543210abcdef1234567890abcdef1234567890abcdef1234567890abcd98',
 };
+
+// Mock Assets data from Fixed_Asset.json
+const fixedAssets = getFixedAssets();
+export const mockAssetsReferences: AssetReference[] = fixedAssets.map(asset => ({
+  assetID: asset.assetID,
+  assetName: asset.assetName,
+  originalCost: asset.originalCost,
+  acquisitionDate: asset.acquisitionDate,
+  estimatedUsefulLife_months: asset.usefulLife_years * 12, // Convert years to months
+}));
 
 // Extended WalrusBlob type for mock data with audit status
 export type WalrusBlobWithAudit = {
@@ -925,6 +937,7 @@ export const mockDeals: DealWithExtendedFields[] = [
       industry: 'Technology',
       dealSize: '$30M USD',
       notes: 'KPI achieved in Dec 2025 - Contingent consideration paid',
+      assets: mockAssetsReferences,
     },
     createdAt: new Date('2025-10-15T10:00:00Z'),
     updatedAt: new Date('2026-01-05T10:00:00Z'),
@@ -949,6 +962,7 @@ export const mockDeals: DealWithExtendedFields[] = [
       industry: 'Technology',
       dealSize: '$30M USD',
       notes: 'In-progress deal showing audit workflow in November 2025',
+      assets: mockAssetsReferences,
     },
     createdAt: new Date('2025-10-15T10:00:00Z'),
     updatedAt: new Date('2025-12-01T10:15:00Z'),

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
+import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useRole } from '@/src/frontend/contexts/RoleContext';
@@ -12,8 +12,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { ArrowLeft, Building2, Users, DollarSign, FileText, Upload, X } from 'lucide-react';
+import { ArrowLeft, Building2, Users, DollarSign, FileText, Upload, X, Package, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
+import type { AssetReference } from '@/src/shared/types/asset';
 
 const createDealSchema = z.object({
   // Basic Information
@@ -31,6 +32,13 @@ const createDealSchema = z.object({
   kpiTargetAmount: z.number().positive(),
   contingentConsiderationAmount: z.number().positive(),
   headquarterExpenseAllocationPercentage: z.number().min(0).max(1),
+
+  // Assets Management
+  assets: z.array(z.object({
+    assetID: z.string().min(1, 'Asset ID is required'),
+    originalCost: z.number().positive('Original cost must be positive'),
+    estimatedUsefulLife_months: z.number().int().min(1, 'Useful life must be at least 1 month'),
+  })).min(1, 'At least one asset is required'),
 });
 
 type CreateDealFormData = z.infer<typeof createDealSchema>;
@@ -44,13 +52,20 @@ export default function CreateDealPage() {
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors },
   } = useForm<CreateDealFormData>({
     resolver: zodResolver(createDealSchema),
     defaultValues: {
       earnoutPeriodYears: 3,
       headquarterExpenseAllocationPercentage: 0.1,
+      assets: [{ assetID: '', originalCost: 0, estimatedUsefulLife_months: 120 }],
     },
+  });
+
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: 'assets',
   });
 
   // Role-based access control: Only Buyer can create deals
@@ -101,11 +116,19 @@ export default function CreateDealPage() {
 
     setIsSubmitting(true);
     try {
+      // Transform assets data to AssetReference format
+      const assetsReferences: AssetReference[] = data.assets.map(asset => ({
+        assetID: asset.assetID,
+        originalCost: asset.originalCost,
+        estimatedUsefulLife_months: asset.estimatedUsefulLife_months,
+      }));
+
       // Mock API call - In production, this would call the backend API
       await new Promise((resolve) => setTimeout(resolve, 1500));
 
       console.log('Creating deal with data:', data);
       console.log('MA Agreement file:', uploadedFile);
+      console.log('Assets metadata:', { assets: assetsReferences });
 
       toast.success('Deal created successfully!');
       router.push('/deals');
@@ -326,6 +349,113 @@ export default function CreateDealPage() {
                 Percentage of corporate overhead pool allocated to this business unit
               </p>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Assets Management */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              Assets Management
+            </CardTitle>
+            <CardDescription>
+              Specify the fixed assets included in this deal for depreciation calculation
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {fields.map((field, index) => (
+              <div key={field.id} className="border rounded-lg p-4 space-y-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-medium text-sm">Asset {index + 1}</h4>
+                  {fields.length > 1 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => remove(index)}
+                      className="h-8 w-8 p-0"
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  )}
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor={`assets.${index}.assetID`}>Asset ID</Label>
+                    <Input
+                      id={`assets.${index}.assetID`}
+                      placeholder="e.g., MACH-001A"
+                      {...register(`assets.${index}.assetID` as const)}
+                    />
+                    {errors.assets?.[index]?.assetID && (
+                      <p className="text-sm text-destructive mt-1">
+                        {errors.assets[index]?.assetID?.message}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor={`assets.${index}.originalCost`}>
+                        Original Cost (USD)
+                      </Label>
+                      <Input
+                        id={`assets.${index}.originalCost`}
+                        type="number"
+                        step="1"
+                        min="0"
+                        placeholder="e.g., 500000"
+                        {...register(`assets.${index}.originalCost` as const, {
+                          valueAsNumber: true,
+                        })}
+                      />
+                      {errors.assets?.[index]?.originalCost && (
+                        <p className="text-sm text-destructive mt-1">
+                          {errors.assets[index]?.originalCost?.message}
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <Label htmlFor={`assets.${index}.estimatedUsefulLife_months`}>
+                        Estimated Useful Life (Months)
+                      </Label>
+                      <Input
+                        id={`assets.${index}.estimatedUsefulLife_months`}
+                        type="number"
+                        min="1"
+                        placeholder="e.g., 120"
+                        {...register(`assets.${index}.estimatedUsefulLife_months` as const, {
+                          valueAsNumber: true,
+                        })}
+                      />
+                      {errors.assets?.[index]?.estimatedUsefulLife_months && (
+                        <p className="text-sm text-destructive mt-1">
+                          {errors.assets[index]?.estimatedUsefulLife_months?.message}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => append({ assetID: '', originalCost: 0, estimatedUsefulLife_months: 120 })}
+              className="w-full"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add Asset
+            </Button>
+
+            {errors.assets?.root && (
+              <p className="text-sm text-destructive">{errors.assets.root.message}</p>
+            )}
           </CardContent>
         </Card>
 

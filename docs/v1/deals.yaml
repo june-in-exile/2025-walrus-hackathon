@@ -21,7 +21,7 @@ paths:
         - Authentication: Requires X-Sui-Address and X-Sui-Signature headers
       operationId: listDeals
       tags:
-        - Deal Management
+        - Deals
       parameters:
         - name: X-Sui-Address
           in: header
@@ -140,7 +140,7 @@ paths:
         - Verification: Checks that userAddress will be set as buyer
       operationId: createDeal
       tags:
-        - Deal Management
+        - Deals
       parameters:
         - name: X-Sui-Address
           in: header
@@ -238,7 +238,7 @@ paths:
         - Verification: Checks user address matches one of the roles
       operationId: getDeal
       tags:
-        - Deal Management
+        - Deals
       parameters:
         - name: X-Sui-Address
           in: header
@@ -303,3 +303,261 @@ paths:
             application/json:
               schema:
                 $ref: '../schemas/errors.yaml#/components/schemas/NotFoundError'
+
+  /deals/{dealId}/dashboard:
+    get:
+      summary: Get comprehensive dashboard data for a deal
+      description: |
+        **Purpose**: Provide one-stop overview of deal status, progress, and health metrics
+
+        **Business Logic**:
+        - Aggregates data from multiple sources (Sui blockchain, Walrus metadata, local cache)
+        - Shows period-by-period progress summary
+        - Lists recent events and activities
+        - Calculates health metrics and identifies risks
+        - Suggests next actions based on user role and current status
+
+        **Dashboard Components**:
+
+        1. **Deal Info**: Basic deal details and user's role
+        2. **Periods Summary**: Status of each earn-out period
+           - Data upload progress (blob count, completeness)
+           - KPI status (not proposed / proposed / approved / rejected)
+           - Settlement status (not settled / pending / settled)
+           - Payout amounts
+        3. **Recent Events**: Timeline of important actions
+           - Data uploads
+           - KPI proposals and attestations
+           - Settlements
+           - Role updates
+        4. **Health Metrics**: Overall deal health
+           - Progress percentage
+           - Pending actions requiring attention
+           - Next deadlines
+           - Risk detection (missing data, delays, etc.)
+
+        **Sui Integration**:
+        - Reads: Deal object, all Period objects
+        - Events: Recent blockchain events (last 50 events)
+        - Aggregation: Combines on-chain state with cached metadata
+        - Caching: Dashboard data cached for 30 seconds
+
+        **Walrus Integration**:
+        - Metadata: Blob counts and last upload timestamps
+        - Completeness: Calculates data completeness score per period
+
+        **Role-Specific Views**:
+        - **Buyer**: Sees upload progress, pending KPI proposals, settlement opportunities
+        - **Seller**: Monitors buyer's data submissions, tracks expected payouts
+        - **Auditor**: Sees pending KPI reviews, attestation queue
+
+        **Use Cases**:
+        - Landing page after selecting a deal
+        - Quick health check without drilling into details
+        - Identifying what actions are needed next
+        - Monitoring overall earn-out progress
+
+        **Access Control**:
+        - Role: All deal participants (buyer, seller, auditor)
+        - View: Customized based on user's role
+      operationId: getDashboard
+      tags:
+        - Deals
+      parameters:
+        - name: X-Sui-Address
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: '^0x[a-fA-F0-9]{64}$'
+        - name: X-Sui-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: dealId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^0x[a-fA-F0-9]{64}$'
+          description: Deal ID
+          example: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+      responses:
+        '200':
+          description: Successfully retrieved dashboard data
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/dashboard.yaml#/components/schemas/DashboardResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/UnauthorizedError'
+        '403':
+          description: Forbidden - User not a participant
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/ForbiddenError'
+        '404':
+          description: Deal not found
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/NotFoundError'
+
+  /deals/{dealId}/blobs:
+    get:
+      summary: List all Walrus blobs associated with a deal
+      description: |
+        **Purpose**: Retrieve metadata for all Walrus blobs associated with a specific deal
+
+        **Use Case**:
+        - Users need to see all financial documents uploaded for a deal
+        - Auditors need to review all available data before attestation
+        - Sellers want to monitor data submission timeline
+        - Frontend displays a list of downloadable files for each deal
+
+        **Data Source**:
+        The system retrieves blob metadata from two sources:
+        1. **On-chain data**: Blob IDs registered via `add_walrus_blob` Move function
+        2. **Walrus storage**: Download metadata envelope from each blob to get detailed information
+
+        **Response Format**:
+        Returns an array of blob metadata objects, each containing:
+        - Basic info: blobId, size, uploadedAt, uploaderAddress
+        - Classification: dataType (revenue_journal, ebitda_report, etc.), periodId
+        - File info: filename, mimeType, description
+        - Encryption: encryptionMode (client_encrypted or server_encrypted)
+        - Access control: Seal policy information for decryption
+
+        **Performance Considerations**:
+        - This endpoint may be slow for deals with many blobs (requires downloading metadata from each)
+        - Future optimization: Cache blob metadata in backend database
+        - Pagination support included for large datasets
+
+        **Access Control**:
+        - Authentication required: User must provide valid Sui signature
+        - Authorization: User must be a participant in the deal (buyer/seller/auditor)
+        - Only authorized users can see the list of blobs
+
+        **Next Steps After Retrieval**:
+        - Frontend can display the list of files with download buttons
+        - Users can call `GET /walrus/download/{blobId}?dealId={dealId}` to download specific files
+        - Frontend uses `X-Seal-Package-Id` and `X-Seal-Whitelist-Id` from download response to decrypt
+      operationId: listDealBlobs
+      tags:
+        - Deals
+      parameters:
+        - name: dealId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^0x[a-fA-F0-9]{64}$"
+          description: Deal ID to retrieve blobs for
+          example: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+        - name: periodId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by specific period (optional)
+          example: "period_2026"
+        - name: dataType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              [
+                "revenue_journal",
+                "ebitda_report",
+                "expense_report",
+                "balance_sheet",
+                "cash_flow",
+                "kpi_calculation",
+                "audit_report",
+                "custom",
+              ]
+          description: Filter by data type (optional)
+          example: "revenue_journal"
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number for pagination
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          description: Number of items per page
+        - name: X-Sui-Address
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: "^0x[a-fA-F0-9]{64}$"
+          description: Sui wallet address requesting the list
+        - name: X-Sui-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Base64-encoded signature of the timestamp message
+        - name: X-Sui-Signature-Message
+          in: header
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: |
+            ISO timestamp that was signed (e.g., "2025-11-20T10:30:45.123Z").
+            Must be within 5 minutes of current time to prevent replay attacks.
+      responses:
+        "200":
+          description: Successfully retrieved blob list
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/walrus.yaml#/components/schemas/DealBlobsListResponse"
+        "400":
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/errors.yaml#/components/schemas/ValidationError"
+        "401":
+          description: Unauthorized - Missing or invalid authentication
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/errors.yaml#/components/schemas/UnauthorizedError"
+        "403":
+          description: Forbidden - User not authorized for this deal
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/errors.yaml#/components/schemas/ForbiddenError"
+        "404":
+          description: Deal not found
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/errors.yaml#/components/schemas/NotFoundError"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/errors.yaml#/components/schemas/ErrorResponse"

@@ -22,7 +22,6 @@ paths:
       operationId: calculateKPI
       tags:
         - Nautilus
-        - KPI
       parameters:
         - name: X-Sui-Address
           in: header

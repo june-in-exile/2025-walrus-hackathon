@@ -10,7 +10,7 @@ import * as z from 'zod';
 import { toast } from 'sonner';
 import { useDashboard } from '@/src/frontend/hooks/useDashboard';
 import { WalletButton } from '@/src/frontend/components/wallet/WalletButton';
-import { PeriodFormSection } from '@/src/frontend/components/setup/PeriodFormSection';
+import { PeriodFormSection } from '@/src/frontend/components/features/setup/PeriodFormSection';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {

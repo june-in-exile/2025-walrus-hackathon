@@ -80,28 +80,23 @@ export class WalrusController {
       // Get the shared Clock object (0x6 is the standard Sui Clock object ID)
       const clock = tx.object('0x6');
 
-      // Call the add_walrus_blob function on the earnout module
+      // Call the add_walrus_blob function on the earnout module                          
       // This function automatically creates a DataAuditRecord via create_audit_record_internal
-      //
-      // Contract function signature:
-      // public fun add_walrus_blob(
-      //   deal: &mut Deal,
-      //   period_index: u64,
-      //   blob_id: String,
-      //   data_type: String,
-      //   clock: &Clock,
-      //   ctx: &mut TxContext
-      // )
-      //
-      // Note: period_index is the numeric index in the Deal's periods vector
-      // We need to parse it from periodId (e.g., "Q1-2024" -> 0)
-      const periodIndex = parseInt(periodId.replace(/\D/g, ''), 10) || 0;
-
+      //                                                                                  
+      // Contract function signature:                                                     
+      // public fun add_walrus_blob(                                                      
+      //   deal: &mut Deal,                                                               
+      //   subperiod_id: String,                                                          
+      //   blob_id: String,                                                               
+      //   data_type: String,                                                             
+      //   clock: &Clock,                                                                 
+      //   ctx: &mut TxContext                                                            
+      // )                                                                                
       tx.moveCall({
         target: `${config.earnout.packageId}::earnout::add_walrus_blob`,
         arguments: [
           tx.object(dealId),
-          tx.pure.u64(periodIndex),
+          tx.pure.string(periodId), // Pass the string ID directly                        
           tx.pure.string(blobId),
           tx.pure.string(dataType),
           clock,

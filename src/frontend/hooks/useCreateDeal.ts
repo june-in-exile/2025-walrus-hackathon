@@ -185,40 +185,28 @@ export function useCreateDeal(): UseCreateDealReturn {
         const txBytes = fromHex(data.transaction.txBytes);
         const tx = Transaction.from(txBytes);
 
-        await signAndExecuteTransaction(
-          {
-            transaction: tx,
-          },
-          {
-            onSuccess: (result) => {
-              toast.success('Deal created successfully!', {
-                description: `Transaction: ${result.digest.slice(0, 16)}...`,
-              });
-              // Extract deal ID from transaction effects (created objects)
-              // For now, use the transaction digest as a reference
-              onSuccess?.(result.digest);
-            },
-            onError: (err) => {
-              console.error('Create deal transaction failed:', err);
-              const error = err instanceof Error ? err : new Error('Transaction failed');
-              setError(error);
-              toast.error('Failed to create deal', {
-                description: error.message,
-              });
-              onError?.(error);
-            },
-          }
-        );
+        // 4. Execute the transaction with a cleaner async/await pattern
+        const result = await signAndExecuteTransaction({
+          transaction: tx,
+        });
+
+        // Handle success case
+        toast.success('Deal created successfully!', {
+          description: `Transaction: ${result.digest.slice(0, 16)}...`,
+        });
+        onSuccess?.(result.digest);
       } catch (err) {
+        // This catch block now handles errors from the entire process,
+        // including signing and transaction execution.
         toast.dismiss('create-deal');
         const error = err instanceof Error ? err : new Error('Unknown error');
         setError(error);
         console.error('Create deal failed:', error);
 
-        // Handle user rejection
+        // Handle user rejection from either signing or transaction
         if (error.message.includes('rejected') || error.message.includes('cancelled')) {
           toast.error('Operation cancelled', {
-            description: 'You cancelled the request',
+            description: 'You cancelled the request in your wallet',
           });
         } else {
           toast.error('Failed to create deal', {

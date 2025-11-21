@@ -166,7 +166,7 @@ export default function DealDashboardPage() {
           {/* Right Column: Periods */}
           <div className="lg:col-span-2">
             <div className="mb-6">
-              <h2 className="text-2xl font-semibold mb-2">Earn-out Periods</h2>
+              <h2 className="text-2xl font-semibold mb-2">Sub Periods</h2>
               <p className="text-muted-foreground text-sm">
                 Track performance metrics and settlements for each period
               </p>

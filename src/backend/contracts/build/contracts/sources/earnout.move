@@ -14,7 +14,6 @@ module contracts::earnout {
     const EInvalidSignature: u64 = 2;
     const EAlreadyAudited: u64 = 3;
     const ENotAuthorized: u64 = 4;
-    const EParametersLocked: u64 = 5;
     const EMismatchLength: u64 = 6;
     const EInvalidAttestation: u64 = 8;
     const EKPIResultAlreadySubmitted: u64 = 9;
@@ -288,7 +287,7 @@ module contracts::earnout {
     /// The blob_id should be the Walrus blob ID after uploading encrypted data.
     public fun add_walrus_blob(
         deal: &mut Deal,
-        subperiod_index: u64,
+        subperiod_id: String,
         blob_id: String,
         data_type: String,
         clock: &Clock,
@@ -299,22 +298,37 @@ module contracts::earnout {
         assert!(deal.parameters_locked, EParametersNotSet);
 
         let deal_id = object::id(deal);
-        let subperiods_len = vector::length(&deal.subperiods);
-        assert!(subperiod_index < subperiods_len, ESubperiodNotFound);
 
-        let subperiod = vector::borrow_mut(&mut deal.subperiods, subperiod_index);
-        let subperiod_id_copy = subperiod.id;
+        // Find the subperiod by ID
+        let mut i = 0;
+        let len = vector::length(&deal.subperiods);
+        let mut found_index = option::none<u64>();
 
+        while (i < len) {
+            let temp_subperiod = vector::borrow(&deal.subperiods, i);
+            if (temp_subperiod.id == subperiod_id) {
+                found_index = option::some(i);
+                break
+            };
+            i = i + 1;
+        };
+
+        assert!(option::is_some(&found_index), ESubperiodNotFound);
+        let subperiod_index = option::destroy_some(found_index);
+        let subperiod_ref = vector::borrow_mut(&mut deal.subperiods, subperiod_index);
+
+
+        let subperiod_id_copy = subperiod_ref.id;
         let timestamp = clock::timestamp_ms(clock);
 
         let blob_ref = WalrusBlobRef {
-            blob_id: blob_id,
+            blob_id,
             data_type,
             uploaded_at: timestamp,
             uploader: sender,
         };
 
-        vector::push_back(&mut subperiod.walrus_blobs, blob_ref);
+        vector::push_back(&mut subperiod_ref.walrus_blobs, blob_ref);
 
         event::emit(BlobAdded {
             deal_id,

@@ -113,7 +113,19 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body = await request.json();
-    const { name, sellerAddress, auditorAddress, startDate, buyerAddress } = body;
+    const { 
+      name, 
+      sellerAddress, 
+      auditorAddress, 
+      startDateMs, 
+      buyerAddress,
+      periodMonths,
+      kpiThreshold,
+      maxPayout,
+      subperiodIds,
+      subperiodStartDates,
+      subperiodEndDates,
+    } = body;
 
     // Validate required fields
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
@@ -125,6 +137,19 @@ export async function POST(request: NextRequest) {
         },
         { status: 400 }
       );
+    }
+
+    if (typeof periodMonths !== 'number' || periodMonths <= 0) {
+      return NextResponse.json({ error: 'ValidationError', message: 'periodMonths is required' }, { status: 400 });
+    }
+    if (typeof kpiThreshold !== 'number') {
+      return NextResponse.json({ error: 'ValidationError', message: 'kpiThreshold is required' }, { status: 400 });
+    }
+    if (typeof maxPayout !== 'number' || maxPayout <= 0) {
+      return NextResponse.json({ error: 'ValidationError', message: 'maxPayout is required' }, { status: 400 });
+    }
+    if (!Array.isArray(subperiodIds)) {
+      return NextResponse.json({ error: 'ValidationError', message: 'subperiodIds are required' }, { status: 400 });
     }
 
     // Validate Sui address format
@@ -152,32 +177,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate startDate (required, format: YYYY-MM-DD)
-    if (!startDate || typeof startDate !== 'string') {
+    // Validate startDateMs (required, number)
+    if (typeof startDateMs !== 'number' || isNaN(startDateMs) || startDateMs <= 0) {
       return NextResponse.json(
         {
           error: 'ValidationError',
-          message: 'Start date is required (format: YYYY-MM-DD)',
+          message: 'Start date in milliseconds (startDateMs) is required and must be a positive number',
           statusCode: 400,
         },
         { status: 400 }
       );
     }
-
-    const startDateParsed = Date.parse(startDate);
-    if (isNaN(startDateParsed)) {
-      return NextResponse.json(
-        {
-          error: 'ValidationError',
-          message: 'Invalid start date format (expected: YYYY-MM-DD)',
-          statusCode: 400,
-        },
-        { status: 400 }
-      );
-    }
-
-    // Convert to Unix timestamp in milliseconds
-    const startDateMs = startDateParsed;
 
     // Buyer address should match the authenticated user
     const effectiveBuyerAddress = buyerAddress || userAddress;
@@ -198,6 +208,12 @@ export async function POST(request: NextRequest) {
       sellerAddress,
       auditorAddress,
       startDateMs,
+      periodMonths,
+      kpiThreshold,
+      maxPayout,
+      subperiodIds,
+      subperiodStartDates,
+      subperiodEndDates,
       effectiveBuyerAddress
     );
 

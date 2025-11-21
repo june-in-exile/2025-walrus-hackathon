@@ -38,9 +38,7 @@ const createDealSchema = z.object({
   contingentConsiderationAmount: z.number().positive(),
   headquarterExpenseAllocationPercentage: z.number().min(0).max(1),
 
-  // New fields for set_parameters
-  kpiThreshold: z.number().min(0, 'KPI Threshold must be non-negative'),
-  maxPayout: z.number().min(1, 'Max Payout must be positive'),
+
 
   // Assets Management
   assets: z.array(z.object({
@@ -61,17 +59,16 @@ export default function CreateDealPage() {
 
   const {
     register,
-    handleSubmit,
     control,
     formState: { errors },
+    getValues,
   } = useForm<CreateDealFormData>({
     resolver: zodResolver(createDealSchema),
     defaultValues: {
       earnoutPeriodYears: 3,
       headquarterExpenseAllocationPercentage: 0.1,
       startDate: '2025-11-03',
-      kpiThreshold: 900000,
-      maxPayout: 30000000,
+
       assets: [{ assetID: '', originalCost: 0, estimatedUsefulLife_months: 120 }],
     },
   });
@@ -120,12 +117,35 @@ export default function CreateDealPage() {
     toast.info('MA Agreement removed');
   };
 
-  // generateSubPeriods imported at top-level
+  const handleCreateDealClick = async () => {
+    const currentData = getValues();
+    const validationResult = createDealSchema.safeParse(currentData);
 
-  // ... (existing code) ...
-  // ... (existing code) ...
+    if (!validationResult.success) {
+      const zodErrors = validationResult.error.flatten().fieldErrors;
+      console.error("Form validation failed. Details:", zodErrors);
 
+      const errorFields = Object.keys(zodErrors);
+      let description = "Please check the form for errors.";
+      if (errorFields.length > 0) {
+        const fieldsToShow = errorFields.slice(0, 3).join(', ');
+        description = `Invalid fields include: ${fieldsToShow}...`;
+      }
+
+      toast.error("Form is invalid", {
+        description: description + " See console (F12) for more details.",
+      });
+      return;
+    }
+
+    // If validation passes, call the original onSubmit function with the validated data
+    console.log("Form is valid, submitting...");
+    await onSubmit(validationResult.data);
+  };
   const onSubmit = async (data: CreateDealFormData) => {
+    console.log('onSubmit function triggered.');
+    console.log('Form data:', data);
+    console.log('Form errors:', errors);
     if (!uploadedFile) {
       toast.error('Please upload the M&A Agreement PDF');
       return;
@@ -169,8 +189,8 @@ export default function CreateDealPage() {
       auditorAddress: data.auditorAddress,
       startDateMs: startDate.getTime(), // Pass startDate in milliseconds
       periodMonths: periodMonths,
-      kpiThreshold: data.kpiThreshold,
-      maxPayout: data.maxPayout,
+      kpiThreshold: data.kpiTargetAmount,
+      maxPayout: data.contingentConsiderationAmount,
       subperiodIds: subperiodIds,
       subperiodStartDates: subperiodStartDates,
       subperiodEndDates: subperiodEndDates,
@@ -204,7 +224,7 @@ export default function CreateDealPage() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      <form className="space-y-6">
         {/* Basic Information */}
         <Card>
           <CardHeader>
@@ -350,39 +370,44 @@ export default function CreateDealPage() {
               )}
             </div>
 
+
+
+
+
             <div>
-              <Label htmlFor="kpiThreshold">KPI Threshold (in smallest unit)</Label>
+              <Label htmlFor="kpiTargetAmount">KPI Target Amount</Label>
               <Input
-                id="kpiThreshold"
+                id="kpiTargetAmount"
                 type="number"
                 step="1"
                 placeholder="e.g., 900000"
-                {...register('kpiThreshold', { valueAsNumber: true })}
+                {...register('kpiTargetAmount', { valueAsNumber: true })}
               />
-              {errors.kpiThreshold && (
-                <p className="text-sm text-destructive mt-1">{errors.kpiThreshold.message}</p>
+              {errors.kpiTargetAmount && (
+                <p className="text-sm text-destructive mt-1">{errors.kpiTargetAmount.message}</p>
               )}
               <p className="text-xs text-muted-foreground mt-1">
-                Cumulative KPI target (e.g., 10,000,000 for $10M)
+                The target amount for the Key Performance Indicator.
               </p>
             </div>
 
             <div>
-              <Label htmlFor="maxPayout">Max Payout (in MIST for SUI)</Label>
+              <Label htmlFor="contingentConsiderationAmount">Contingent Consideration Amount</Label>
               <Input
-                id="maxPayout"
+                id="contingentConsiderationAmount"
                 type="number"
                 step="1"
                 placeholder="e.g., 30000000"
-                {...register('maxPayout', { valueAsNumber: true })}
+                {...register('contingentConsiderationAmount', { valueAsNumber: true })}
               />
-              {errors.maxPayout && (
-                <p className="text-sm text-destructive mt-1">{errors.maxPayout.message}</p>
+              {errors.contingentConsiderationAmount && (
+                <p className="text-sm text-destructive mt-1">{errors.contingentConsiderationAmount.message}</p>
               )}
               <p className="text-xs text-muted-foreground mt-1">
-                Maximum payout amount (e.g., 50,000,000,000 MIST for 50 SUI)
+                The amount of consideration payable contingent on meeting the KPI.
               </p>
             </div>
+
 
             <div>
               <Label htmlFor="headquarterExpenseAllocationPercentage">
@@ -596,7 +621,7 @@ export default function CreateDealPage() {
                   >
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={isCreating || !uploadedFile}>
+                  <Button type="button" disabled={isCreating} onClick={handleCreateDealClick}>
                     {isCreating ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />

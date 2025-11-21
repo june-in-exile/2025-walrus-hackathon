@@ -163,7 +163,7 @@ export const appConfig = {
   /**
    * JWT secret for API authentication
    */
-  jwtSecret: getOptionalEnvVar('JWT_SECRET', 'dev-secret-change-in-production'),
+  jwtSecret: getEnvVar('JWT_SECRET', 'dev-secret-change-in-production'),
 
   /**
    * API request timeout in milliseconds

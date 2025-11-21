@@ -1,0 +1,217 @@
+paths:
+  /nautilus/calculate-kpi:
+    post:
+      summary: Calculate KPI using Nautilus TEE
+      description: |
+        **Purpose**: Trigger KPI calculation (mock or via Nautilus TEE) and return transaction bytes for submitting the result on-chain.
+
+        **Use Case**:
+        - Buyer submits financial data for a period
+        - System calculates KPI based on uploaded documents
+        - Returns signed attestation and transaction to submit result on-chain
+
+        **Nautilus Integration**:
+        - In production, this would invoke a Trusted Execution Environment (TEE) to perform verifiable computation
+        - TEE downloads encrypted financial documents from Walrus
+        - Calculates KPI values in a secure enclave
+        - Returns cryptographically signed attestation
+
+        **Access Control**:
+        - Role: Buyer only (seller and auditor cannot trigger calculation)
+        - Verification: User must be the deal's buyer
+      operationId: calculateKPI
+      tags:
+        - Nautilus
+        - KPI
+      parameters:
+        - name: X-Sui-Address
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: '^0x[a-fA-F0-9]{64}$'
+          description: Sui wallet address of the requester
+        - name: X-Sui-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Base64-encoded signature of the timestamp message
+        - name: X-Sui-Signature-Message
+          in: header
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: |
+            ISO timestamp that was signed (e.g., "2025-11-20T10:30:45.123Z").
+            Must be within 5 minutes of current time to prevent replay attacks.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - dealId
+                - periodIndex
+              properties:
+                dealId:
+                  type: string
+                  description: Deal ID to calculate KPI for
+                  pattern: '^0x[a-fA-F0-9]{64}$'
+                  example: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+                periodIndex:
+                  type: integer
+                  description: Zero-based index of the period to calculate
+                  minimum: 0
+                  example: 0
+                kpiType:
+                  type: string
+                  description: Type of KPI to calculate (defaults to "revenue" if not specified)
+                  enum: ["revenue", "ebitda", "user_growth", "arr", "custom"]
+                  default: "revenue"
+                  example: "revenue"
+            example:
+              dealId: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+              periodIndex: 0
+              kpiType: "revenue"
+      responses:
+        '200':
+          description: KPI calculation successful
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - kpiValue
+                  - kpiType
+                  - attestation
+                  - computedAt
+                  - nextStep
+                properties:
+                  kpiValue:
+                    type: number
+                    description: Calculated KPI value
+                    example: 12500000
+                  kpiType:
+                    type: string
+                    description: Type of KPI calculated
+                    example: "revenue"
+                  attestation:
+                    type: string
+                    description: Base64-encoded cryptographic attestation from Nautilus TEE
+                    example: "YXR0ZXN0YXRpb25fZGF0YV9oZXJl"
+                  computedAt:
+                    type: integer
+                    description: Unix timestamp when computation was performed
+                    example: 1706184000
+                  nextStep:
+                    type: object
+                    description: Next action for the user
+                    required:
+                      - action
+                      - description
+                      - transaction
+                    properties:
+                      action:
+                        type: string
+                        enum: ["submit_kpi_result"]
+                        description: Action identifier
+                        example: "submit_kpi_result"
+                      description:
+                        type: string
+                        description: Human-readable description of next step
+                        example: "Sign and execute transaction to submit KPI result on-chain"
+                      transaction:
+                        type: object
+                        description: Transaction to submit KPI on-chain
+                        required:
+                          - txBytes
+                          - description
+                        properties:
+                          txBytes:
+                            type: string
+                            description: Base64-encoded transaction bytes
+                            example: "AAACAAgQJxAAAAAAAAAgx7VRE4..."
+                          digest:
+                            type: string
+                            description: Transaction digest for reference
+                            example: "8vqKfZTqP9J3xYz1RmN2BcD4LpW7Qh5K"
+                          description:
+                            type: string
+                            description: Description of what this transaction does
+                            example: "Submit revenue KPI result: $12,500,000"
+              example:
+                kpiValue: 12500000
+                kpiType: "revenue"
+                attestation: "YXR0ZXN0YXRpb25fZGF0YV9oZXJl"
+                computedAt: 1706184000
+                nextStep:
+                  action: "submit_kpi_result"
+                  description: "Sign and execute transaction to submit KPI result on-chain"
+                  transaction:
+                    txBytes: "AAACAAgQJxAAAAAAAAAgx7VRE4..."
+                    digest: "8vqKfZTqP9J3xYz1RmN2BcD4LpW7Qh5K"
+                    description: "Submit revenue KPI result: $12,500,000"
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/ValidationError'
+              examples:
+                invalidDealId:
+                  value:
+                    error: "ValidationError"
+                    message: "Invalid deal ID format"
+                    statusCode: 400
+                invalidPeriodIndex:
+                  value:
+                    error: "ValidationError"
+                    message: "Period index out of range"
+                    statusCode: 400
+                missingData:
+                  value:
+                    error: "ValidationError"
+                    message: "Insufficient financial data uploaded for calculation"
+                    statusCode: 400
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/UnauthorizedError'
+        '403':
+          description: Forbidden - Only buyer can trigger KPI calculation
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/ForbiddenError'
+              example:
+                error: "ForbiddenError"
+                message: "Only the deal buyer can trigger KPI calculation"
+                statusCode: 403
+        '404':
+          description: Deal or period not found
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/NotFoundError'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/ErrorResponse'
+              examples:
+                nautilusError:
+                  value:
+                    error: "NautilusError"
+                    message: "Failed to communicate with Nautilus TEE"
+                    statusCode: 500
+                calculationError:
+                  value:
+                    error: "CalculationError"
+                    message: "KPI calculation failed"
+                    statusCode: 500

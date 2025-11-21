@@ -6,7 +6,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useCurrentAccount, useSignPersonalMessage } from '@mysten/dapp-kit';
 import { useCallback } from 'react';
-import type { DealListResponse, Deal } from '@/src/frontend/lib/api-client';
+import type { DealListResponse, Deal } from '@/src/frontend/generated/api-client';
 import { mockDeals } from '@/src/frontend/lib/mock-data';
 
 // Query keys

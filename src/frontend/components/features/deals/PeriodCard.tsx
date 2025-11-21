@@ -11,7 +11,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import Link from 'next/link';
-import type { PeriodSummary } from '@/src/frontend/lib/api-client';
+import type { PeriodSummary } from '@/src/frontend/generated/api-client';
 import { AuditProgressBadge } from '@/src/frontend/components/features/audit/AuditProgressBadge';
 
 interface PeriodCardProps {

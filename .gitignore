@@ -58,6 +58,7 @@ GEMINI.md
 
 # OpenAPI generated clients
 /generated
+src/frontend/generated/
 *.generated.*
 
 # Logs

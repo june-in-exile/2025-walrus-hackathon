@@ -6,7 +6,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useCurrentAccount, useSignPersonalMessage } from '@mysten/dapp-kit';
 import { useCallback, useRef } from 'react';
-import type { DashboardResponse } from '@/src/frontend/lib/api-client';
+import type { DashboardResponse } from '@/src/frontend/generated/api-client';
 
 // Query keys
 export const dashboardKeys = {

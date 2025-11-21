@@ -1,0 +1,113 @@
+components:
+  schemas:
+    KPIProposal:
+      type: object
+      description: Buyer's proposed KPI values with supporting evidence
+      required:
+        - proposedBy
+        - proposedAt
+        - kpiValues
+      properties:
+        proposedBy:
+          type: string
+          description: Sui address of the buyer who proposed the KPI
+          pattern: '^0x[a-fA-F0-9]{64}$'
+          example: "0xbuyer1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+        proposedAt:
+          type: string
+          format: date-time
+          description: Timestamp when KPI was proposed
+          example: "2027-01-15T10:00:00Z"
+        kpiValues:
+          type: array
+          description: Proposed values for each KPI type
+          minItems: 1
+          items:
+            type: object
+            required:
+              - kpiType
+              - value
+            properties:
+              kpiType:
+                type: string
+                description: Type of KPI (should match period's kpiTypes)
+                example: "revenue"
+              value:
+                type: number
+                description: Proposed KPI value
+                example: 12500000
+              evidenceBlobIds:
+                type: array
+                description: Walrus blob IDs containing supporting evidence
+                items:
+                  type: string
+                  example: "blob_2Nf8pQz3Xm7Yk5Rd9Wv1Bc6Lt4Hs"
+              notes:
+                type: string
+                description: Additional notes or explanation
+                example: "Revenue calculated from audited financial statements"
+        txHash:
+          type: string
+          description: Sui transaction hash where proposal was submitted
+          pattern: '^[A-Za-z0-9+/=]{44}$'
+          example: "8vqKfZTqP9J3xYz1RmN2BcD4LpW7Qh5K"
+
+    KPIAttestation:
+      type: object
+      description: Auditor's attestation of KPI values
+      required:
+        - attestedBy
+        - attestedAt
+        - approved
+        - kpiValues
+      properties:
+        attestedBy:
+          type: string
+          description: Sui address of the auditor who attested
+          pattern: '^0x[a-fA-F0-9]{64}$'
+          example: "0xauditor123567890abcdef1234567890abcdef1234567890abcdef1234567890"
+        attestedAt:
+          type: string
+          format: date-time
+          description: Timestamp when attestation was made
+          example: "2027-01-20T14:30:00Z"
+        approved:
+          type: boolean
+          description: Whether the auditor approved the proposed KPI values
+          example: true
+        kpiValues:
+          type: array
+          description: Attested values for each KPI (may differ from proposal if adjustments made)
+          minItems: 1
+          items:
+            type: object
+            required:
+              - kpiType
+              - value
+              - approved
+            properties:
+              kpiType:
+                type: string
+                description: Type of KPI
+                example: "revenue"
+              value:
+                type: number
+                description: Final attested KPI value
+                example: 12000000
+              approved:
+                type: boolean
+                description: Whether this specific KPI value was approved
+                example: true
+              adjustmentReason:
+                type: string
+                description: Reason for adjustment (if value differs from proposal)
+                example: "Excluded non-recurring revenue items per agreement"
+        notes:
+          type: string
+          description: Auditor's notes or explanation
+          example: "KPI values verified against financial documents. Minor adjustment made to exclude one-time revenue."
+        txHash:
+          type: string
+          description: Sui transaction hash where attestation was submitted
+          pattern: '^[A-Za-z0-9+/=]{44}$'
+          example: "9wpLgAUrQ0K4yZa2SnO3CdE5MqX8Ri6L"

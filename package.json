@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "generate:api-client": "openapi-generator-cli generate -i http://localhost:3000/api/openapi -g typescript-fetch -o src/frontend/lib/api-client --additional-properties=supportsES6=true,withInterfaces=true,useSingleRequestParameter=true,modelPropertyNaming=original",
+    "generate:api-client": "openapi-generator-cli generate -i http://localhost:3000/api/openapi -g typescript-fetch -o src/frontend/generated/api-client --additional-properties=supportsES6=true,withInterfaces=true,useSingleRequestParameter=true,modelPropertyNaming=original",
     "test:sui-service": "MOCK_WALRUS=true npx tsx scripts/test-sui-service.ts"
   },
   "dependencies": {

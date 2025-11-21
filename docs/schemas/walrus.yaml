@@ -281,3 +281,166 @@ components:
           type: string
           description: File description
           example: "Q1 2026 revenue journal"
+
+    DealBlobItem:
+      type: object
+      description: Single blob item in deal blobs list
+      required:
+        - blobId
+        - dataType
+        - periodId
+        - uploadedAt
+        - uploaderAddress
+        - size
+        - downloadUrl
+      properties:
+        blobId:
+          type: string
+          description: Walrus blob ID
+          example: "blob_2Nf8pQz3Xm7Yk5Rd9Wv1Bc6Lt4Hs"
+        dataType:
+          type: string
+          description: Type of data stored
+          enum:
+            [
+              "revenue_journal",
+              "ebitda_report",
+              "expense_report",
+              "balance_sheet",
+              "cash_flow",
+              "kpi_calculation",
+              "audit_report",
+              "custom",
+            ]
+          example: "revenue_journal"
+        periodId:
+          type: string
+          description: Period this blob belongs to
+          example: "period_2026"
+        uploadedAt:
+          type: string
+          format: date-time
+          description: Upload timestamp
+          example: "2026-03-15T09:30:00Z"
+        uploaderAddress:
+          type: string
+          description: Sui address of uploader
+          pattern: '^0x[a-fA-F0-9]{64}$'
+          example: "0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+        size:
+          type: integer
+          description: File size in bytes
+          example: 2048576
+        metadata:
+          $ref: '#/components/schemas/WalrusBlobReferenceMetadata'
+        downloadUrl:
+          type: string
+          description: Relative URL to download this blob
+          example: "/api/v1/walrus/download/blob_2Nf8pQz3Xm7Yk5Rd9Wv1Bc6Lt4Hs?dealId=0x1234..."
+
+    WalrusBlobReferenceMetadata:
+      type: object
+      description: Detailed metadata for a blob
+      required:
+        - filename
+        - mimeType
+        - encrypted
+        - encryptionMode
+        - dealId
+        - periodId
+        - dataType
+        - uploadedAt
+        - uploaderAddress
+      properties:
+        filename:
+          type: string
+          description: Original filename
+          example: "revenue_q1_2026.csv"
+        mimeType:
+          type: string
+          description: MIME type
+          example: "text/csv"
+        description:
+          type: string
+          description: File description
+          example: "Q1 2026 revenue journal entries"
+        encrypted:
+          type: boolean
+          description: Whether the blob is encrypted
+          example: true
+        encryptionMode:
+          type: string
+          enum: [client_encrypted, server_encrypted]
+          description: How the file was encrypted
+          example: "client_encrypted"
+        dealId:
+          type: string
+          description: Associated deal ID
+          pattern: '^0x[a-fA-F0-9]{64}$'
+          example: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+        periodId:
+          type: string
+          description: Associated period ID
+          example: "period_2026"
+        dataType:
+          type: string
+          description: Data type classification
+          example: "revenue_journal"
+        customDataType:
+          type: string
+          description: Custom data type (if dataType is 'custom')
+          example: "Customer Acquisition Cost Report"
+        uploadedAt:
+          type: string
+          format: date-time
+          description: Upload timestamp
+          example: "2026-03-15T09:30:00Z"
+        uploaderAddress:
+          type: string
+          description: Uploader Sui address
+          pattern: '^0x[a-fA-F0-9]{64}$'
+          example: "0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+
+    DealBlobsListResponse:
+      type: object
+      description: Response for deal blobs list endpoint
+      required:
+        - items
+        - total
+        - page
+        - limit
+        - totalPages
+      properties:
+        items:
+          type: array
+          description: Array of blob items
+          items:
+            $ref: '#/components/schemas/DealBlobItem'
+        total:
+          type: integer
+          description: Total number of blobs for this deal (after filtering)
+          example: 42
+        page:
+          type: integer
+          description: Current page number
+          example: 1
+        limit:
+          type: integer
+          description: Number of items per page
+          example: 50
+        totalPages:
+          type: integer
+          description: Total number of pages
+          example: 1
+        sealPolicy:
+          type: object
+          description: Seal policy information for decryption
+          properties:
+            packageId:
+              type: string
+              description: Seal package ID
+              example: "0xseal_package_id"
+            whitelistObjectId:
+              type: string
+              description: Whitelist object ID for access control
+              example: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"

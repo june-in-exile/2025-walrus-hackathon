@@ -1,0 +1,239 @@
+paths:
+  /deals/{dealId}/blobs:
+    get:
+      summary: List all Walrus blobs associated with a deal
+      description: |
+        **Purpose**: Retrieve metadata for all Walrus blobs associated with a specific deal
+
+        **Use Case**:
+        - Users need to see all financial documents uploaded for a deal
+        - Auditors need to review all available data before attestation
+        - Sellers want to monitor data submission timeline
+        - Frontend displays a list of downloadable files for each deal
+
+        **Data Source**:
+        The system retrieves blob metadata from two sources:
+        1. **On-chain data**: Blob IDs registered via `add_walrus_blob` Move function
+        2. **Walrus storage**: Download metadata envelope from each blob to get detailed information
+
+        **Response Format**:
+        Returns an array of blob metadata objects, each containing:
+        - Basic info: blobId, size, uploadedAt, uploaderAddress
+        - Classification: dataType (revenue_journal, ebitda_report, etc.), periodId
+        - File info: filename, mimeType, description
+        - Encryption: encryptionMode (client_encrypted or server_encrypted)
+        - Access control: Seal policy information for decryption
+
+        **Performance Considerations**:
+        - This endpoint may be slow for deals with many blobs (requires downloading metadata from each)
+        - Future optimization: Cache blob metadata in backend database
+        - Pagination support included for large datasets
+
+        **Access Control**:
+        - Authentication required: User must provide valid Sui signature
+        - Authorization: User must be a participant in the deal (buyer/seller/auditor)
+        - Only authorized users can see the list of blobs
+
+        **Next Steps After Retrieval**:
+        - Frontend can display the list of files with download buttons
+        - Users can call `GET /walrus/download/{blobId}?dealId={dealId}` to download specific files
+        - Frontend uses `X-Seal-Package-Id` and `X-Seal-Whitelist-Id` from download response to decrypt
+      operationId: listDealBlobs
+      tags:
+        - Walrus
+        - Deals
+      parameters:
+        - name: dealId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^0x[a-fA-F0-9]{64}$"
+          description: Deal ID to retrieve blobs for
+          example: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+        - name: periodId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by specific period (optional)
+          example: "period_2026"
+        - name: dataType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              [
+                "revenue_journal",
+                "ebitda_report",
+                "expense_report",
+                "balance_sheet",
+                "cash_flow",
+                "kpi_calculation",
+                "audit_report",
+                "custom",
+              ]
+          description: Filter by data type (optional)
+          example: "revenue_journal"
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number for pagination
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          description: Number of items per page
+        - name: X-Sui-Address
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: "^0x[a-fA-F0-9]{64}$"
+          description: Sui wallet address requesting the list
+        - name: X-Sui-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Base64-encoded signature of the timestamp message
+        - name: X-Sui-Signature-Message
+          in: header
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: |
+            ISO timestamp that was signed (e.g., "2025-11-20T10:30:45.123Z").
+            Must be within 5 minutes of current time to prevent replay attacks.
+      responses:
+        "200":
+          description: Successfully retrieved blob list
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/walrus.yaml#/components/schemas/DealBlobsListResponse"
+              example:
+                items:
+                  - blobId: "blob_2Nf8pQz3Xm7Yk5Rd9Wv1Bc6Lt4Hs"
+                    dataType: "revenue_journal"
+                    periodId: "period_2026"
+                    uploadedAt: "2026-03-15T09:30:00Z"
+                    uploaderAddress: "0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+                    size: 2048576
+                    metadata:
+                      filename: "revenue_q1_2026.csv"
+                      mimeType: "text/csv"
+                      description: "Q1 2026 revenue journal"
+                      encrypted: true
+                      encryptionMode: "client_encrypted"
+                      dealId: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+                      periodId: "period_2026"
+                      dataType: "revenue_journal"
+                      uploadedAt: "2026-03-15T09:30:00Z"
+                      uploaderAddress: "0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+                    downloadUrl: "/api/v1/walrus/download/blob_2Nf8pQz3Xm7Yk5Rd9Wv1Bc6Lt4Hs?dealId=0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+                  - blobId: "blob_7Xy4mKp8Rq2Vn9Bc5Wd3Jt1Fg6Lm"
+                    dataType: "ebitda_report"
+                    periodId: "period_2026"
+                    uploadedAt: "2026-03-16T14:20:00Z"
+                    uploaderAddress: "0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+                    size: 1024768
+                    metadata:
+                      filename: "ebitda_q1_2026.pdf"
+                      mimeType: "application/pdf"
+                      description: "Q1 2026 EBITDA calculation"
+                      encrypted: true
+                      encryptionMode: "server_encrypted"
+                      dealId: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+                      periodId: "period_2026"
+                      dataType: "ebitda_report"
+                      uploadedAt: "2026-03-16T14:20:00Z"
+                      uploaderAddress: "0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+                    downloadUrl: "/api/v1/walrus/download/blob_7Xy4mKp8Rq2Vn9Bc5Wd3Jt1Fg6Lm?dealId=0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+                total: 2
+                page: 1
+                limit: 50
+                totalPages: 1
+                sealPolicy:
+                  packageId: "0xseal_package_id"
+                  whitelistObjectId: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+        "400":
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/errors.yaml#/components/schemas/ValidationError"
+              examples:
+                invalidDealId:
+                  value:
+                    error: "ValidationError"
+                    message: "Invalid deal ID format"
+                    statusCode: 400
+                invalidPagination:
+                  value:
+                    error: "ValidationError"
+                    message: "Page number must be positive"
+                    statusCode: 400
+        "401":
+          description: Unauthorized - Missing or invalid authentication
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/errors.yaml#/components/schemas/UnauthorizedError"
+        "403":
+          description: Forbidden - User not authorized for this deal
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/errors.yaml#/components/schemas/ForbiddenError"
+              example:
+                error: "ForbiddenError"
+                message: "User is not authorized to view blobs for this deal"
+                statusCode: 403
+                details:
+                  reason: "User is not a participant in this deal"
+                  userAddress: "0xuser..."
+                  dealId: "0xdeal..."
+        "404":
+          description: Deal not found
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/errors.yaml#/components/schemas/NotFoundError"
+              example:
+                error: "NotFoundError"
+                message: "Deal not found"
+                statusCode: 404
+                details:
+                  dealId: "0x1234..."
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/errors.yaml#/components/schemas/ErrorResponse"
+              examples:
+                walrusError:
+                  value:
+                    error: "WalrusError"
+                    message: "Failed to retrieve blob metadata from Walrus"
+                    statusCode: 500
+                    details:
+                      reason: "Walrus aggregator unavailable"
+                suiError:
+                  value:
+                    error: "SuiError"
+                    message: "Failed to query on-chain blob data"
+                    statusCode: 500
+                    details:
+                      reason: "RPC connection timeout"

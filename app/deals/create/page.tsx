@@ -5,14 +5,17 @@ import { useRouter } from 'next/navigation';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { useCurrentAccount } from '@mysten/dapp-kit';
 import { useRole } from '@/src/frontend/contexts/RoleContext';
+import { useCreateDeal } from '@/src/frontend/hooks/useCreateDeal';
 import { RoleAccessMessage } from '@/src/frontend/components/common/RoleAccessMessage';
+import { WalletButton } from '@/src/frontend/components/wallet/WalletButton';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { ArrowLeft, Building2, Users, DollarSign, FileText, Upload, X, Package, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Building2, Users, DollarSign, FileText, Upload, X, Package, Plus, Trash2, Wallet, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import type { AssetReference } from '@/src/shared/types/asset';
 
@@ -46,7 +49,8 @@ type CreateDealFormData = z.infer<typeof createDealSchema>;
 export default function CreateDealPage() {
   const router = useRouter();
   const { currentRole } = useRole();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const currentAccount = useCurrentAccount();
+  const { createDeal, isCreating } = useCreateDeal();
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
 
   const {
@@ -114,30 +118,39 @@ export default function CreateDealPage() {
       return;
     }
 
-    setIsSubmitting(true);
-    try {
-      // Transform assets data to AssetReference format
-      const assetsReferences: AssetReference[] = data.assets.map(asset => ({
-        assetID: asset.assetID,
-        originalCost: asset.originalCost,
-        estimatedUsefulLife_months: asset.estimatedUsefulLife_months,
-      }));
-
-      // Mock API call - In production, this would call the backend API
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      console.log('Creating deal with data:', data);
-      console.log('MA Agreement file:', uploadedFile);
-      console.log('Assets metadata:', { assets: assetsReferences });
-
-      toast.success('Deal created successfully!');
-      router.push('/deals');
-    } catch (error) {
-      console.error('Failed to create deal:', error);
-      toast.error('Failed to create deal. Please try again.');
-    } finally {
-      setIsSubmitting(false);
+    if (!currentAccount?.address) {
+      toast.error('Please connect your wallet first');
+      return;
     }
+
+    // Transform assets data to AssetReference format
+    const assetsReferences: AssetReference[] = data.assets.map(asset => ({
+      assetID: asset.assetID,
+      originalCost: asset.originalCost,
+      estimatedUsefulLife_months: asset.estimatedUsefulLife_months,
+    }));
+
+    console.log('Creating deal with data:', data);
+    console.log('MA Agreement file:', uploadedFile);
+    console.log('Assets metadata:', { assets: assetsReferences });
+
+    // Create the deal on-chain
+    await createDeal({
+      name: data.dealName,
+      sellerAddress: data.acquireeAddress,
+      auditorAddress: data.auditorAddress,
+      onSuccess: (txDigest) => {
+        console.log('Deal created with transaction:', txDigest);
+        console.log('MA Agreement file to upload:', uploadedFile);
+        console.log('Assets to process:', assetsReferences);
+        // TODO: After deal is created, upload the M&A Agreement to Walrus
+        // TODO: Process assets data and store in smart contract
+        router.push('/deals');
+      },
+      onError: (error) => {
+        console.error('Failed to create deal:', error);
+      },
+    });
   };
 
   return (
@@ -510,20 +523,47 @@ export default function CreateDealPage() {
           </CardContent>
         </Card>
 
-        {/* Submit Button */}
-        <div className="flex justify-end gap-3 pt-4">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => router.push('/deals')}
-            disabled={isSubmitting}
-          >
-            Cancel
-          </Button>
-          <Button type="submit" disabled={isSubmitting || !uploadedFile}>
-            {isSubmitting ? 'Creating Deal...' : 'Create Deal'}
-          </Button>
-        </div>
+        {/* Wallet Connection & Submit */}
+        <Card>
+          <CardContent className="pt-6">
+            {!currentAccount ? (
+              <div className="text-center space-y-4">
+                <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                  <Wallet className="h-5 w-5" />
+                  <span>Connect your wallet to create a deal</span>
+                </div>
+                <WalletButton />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Wallet className="h-4 w-4" />
+                  <span>Connected: {currentAccount.address.slice(0, 8)}...{currentAccount.address.slice(-6)}</span>
+                </div>
+                <div className="flex justify-end gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => router.push('/deals')}
+                    disabled={isCreating}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={isCreating || !uploadedFile}>
+                    {isCreating ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Creating Deal...
+                      </>
+                    ) : (
+                      'Create Deal'
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </form>
     </div>
   );

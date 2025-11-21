@@ -20,6 +20,9 @@
 # production
 /build
 
+# temporary
+/tmp
+
 # misc
 .DS_Store
 *.pem
@@ -32,6 +35,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -40,10 +44,42 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Claude Code
+# AI Assistants & Development Tools
 .claude
+.cursor
+.gemini
+.taskmaster
 CLAUDE.md
+GEMINI.md
+.mcp.json
+
+# GitHub workflows (if not committing)
+.github
 
 # OpenAPI generated clients
 /generated
 *.generated.*
+
+# Logs
+logs
+*.log
+dev-debug.log
+# Dependency directories
+node_modules/
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Task files
+# tasks.json
+# tasks/ 
+*.todo
+
+# Sui Contracts
+/contracts/build/

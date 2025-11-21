@@ -1,39 +1,12 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useCurrentAccount } from '@mysten/dapp-kit';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ArrowRight, Shield, Database, Lock, FileText, Users, Zap } from 'lucide-react';
 
 export default function HomePage() {
-  const currentAccount = useCurrentAccount();
-  const router = useRouter();
-
-  // Redirect to /deals if wallet is already connected
-  useEffect(() => {
-    if (currentAccount) {
-      router.push('/deals');
-    }
-  }, [currentAccount, router]);
-
-  // If wallet is connected, show loading state while redirecting
-  if (currentAccount) {
-    return (
-      <div className="container flex items-center justify-center min-h-[80vh]">
-        <div className="text-center">
-          <div className="animate-pulse">
-            <div className="h-8 w-8 mx-auto mb-4 rounded-full bg-primary"></div>
-            <p className="text-muted-foreground">Redirecting to your deals...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col">
       {/* Hero Section */}

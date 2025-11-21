@@ -1,67 +1,96 @@
+/**
+ * Walrus Upload API Route
+ *
+ * POST /api/v1/walrus/upload?mode=client_encrypted|server_encrypted
+ *
+ * Handles file uploads to Walrus with hybrid encryption support.
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
+import { walrusController } from '@/src/backend/controllers/controller';
+import { config } from '@/src/shared/config/env';
+import type { EncryptionMode } from '@/src/shared/types/walrus';
 
 /**
  * POST /api/v1/walrus/upload
- * Upload encrypted file to Walrus
  *
- * For now, returns mock response simulating successful upload
- * Real implementation will use @mysten/walrus SDK
+ * Upload file to Walrus with optional server-side encryption
  */
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData();
-    const file = formData.get('file') as File;
-    const dealId = formData.get('dealId') as string;
-    const periodId = formData.get('periodId') as string;
-    const dataType = formData.get('dataType') as string;
-    const filename = formData.get('filename') as string;
-    const description = formData.get('description') as string;
+    // Get encryption mode from query parameters
+    const searchParams = request.nextUrl.searchParams;
+    const modeParam = searchParams.get('mode') || config.app.defaultUploadMode;
 
-    if (!file || !dealId || !periodId || !dataType) {
+    // Validate mode parameter
+    const validModes: EncryptionMode[] = ['client_encrypted', 'server_encrypted'];
+    if (!validModes.includes(modeParam as EncryptionMode)) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        {
+          error: 'ValidationError',
+          message: `Invalid encryption mode. Must be one of: ${validModes.join(', ')}`,
+          statusCode: 400,
+          details: {
+            providedMode: modeParam,
+            validModes,
+          },
+        },
         { status: 400 }
       );
     }
 
-    // Mock Walrus upload response
-    const blobId = `blob_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const commitment = `sha256:${Math.random().toString(16).substring(2)}`;
-    const size = file.size;
-    const uploadedAt = new Date().toISOString();
+    const mode = modeParam as EncryptionMode;
 
-    const response = {
-      blobId,
-      commitment,
-      size,
-      uploadedAt,
-      blobReference: {
-        blobId,
-        commitment,
-        dataType,
-        size,
-        uploadedAt,
-        uploaderAddress: '0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab', // Mock address
-        metadata: {
-          filename: filename || file.name,
-          mimeType: file.type,
-          description,
-          periodId,
-          encrypted: true,
+    // Check if server encryption is enabled
+    if (mode === 'server_encrypted' && !config.app.enableServerEncryption) {
+      return NextResponse.json(
+        {
+          error: 'ForbiddenError',
+          message: 'Server-side encryption is disabled',
+          statusCode: 403,
+          details: {
+            reason: 'ENABLE_SERVER_ENCRYPTION is set to false',
+            suggestion: 'Use mode=client_encrypted or enable server encryption in configuration',
+          },
+        },
+        { status: 403 }
+      );
+    }
+
+    // Delegate to controller
+    return await walrusController.handleUpload(request, mode);
+  } catch (error) {
+    console.error('Upload route error:', error);
+
+    return NextResponse.json(
+      {
+        error: 'InternalServerError',
+        message: 'An unexpected error occurred during upload',
+        statusCode: 500,
+        details: {
+          reason: error instanceof Error ? error.message : 'Unknown error',
         },
       },
-      nextStep: {
-        action: 'register_on_chain',
-        description: `Call POST /api/v1/deals/${dealId}/periods/${periodId}/blobs to register this blob on-chain`,
-      },
-    };
-
-    return NextResponse.json(response, { status: 200 });
-  } catch (error) {
-    console.error('Error uploading to Walrus:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
       { status: 500 }
     );
   }
+}
+
+/**
+ * OPTIONS /api/v1/walrus/upload
+ *
+ * CORS preflight handler
+ */
+export async function OPTIONS(request: NextRequest) {
+  return NextResponse.json(
+    {},
+    {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, X-Sui-Address, X-Sui-Signature',
+      },
+    }
+  );
 }

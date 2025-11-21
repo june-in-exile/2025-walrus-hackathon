@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import yaml from 'js-yaml';
-import { OpenAPISpec } from '@/src/shared/types/api.types';
+import { OpenAPISpec, OpenAPIPath } from '@/src/shared/types/api.types';
 import { OPENAPI_DOCS } from '@/src/shared/constants/api.constants';
 
 /**
@@ -82,8 +82,8 @@ export class OpenAPIService {
   /**
    * Merge paths from all endpoint YAML files across all versions
    */
-  private mergeAllPaths(): Record<string, any> {
-    const allPaths: Record<string, any> = {};
+  private mergeAllPaths(): Record<string, OpenAPIPath> {
+    const allPaths: Record<string, OpenAPIPath> = {};
 
     // Process each API version directory
     for (const version of OPENAPI_DOCS.VERSIONS) {
@@ -105,8 +105,8 @@ export class OpenAPIService {
   /**
    * Read all YAML files from a directory and extract paths
    */
-  private readPathsFromDirectory(directory: string): Record<string, any> {
-    const paths: Record<string, any> = {};
+  private readPathsFromDirectory(directory: string): Record<string, OpenAPIPath> {
+    const paths: Record<string, OpenAPIPath> = {};
 
     if (!existsSync(directory)) {
       return paths;
@@ -124,7 +124,7 @@ export class OpenAPIService {
         const filePath = join(directory, file);
         try {
           const content = readFileSync(filePath, 'utf8');
-          const parsed = yaml.load(content) as any;
+          const parsed = yaml.load(content) as { paths?: Record<string, OpenAPIPath> };
 
           if (parsed?.paths) {
             Object.assign(paths, parsed.paths);
@@ -144,8 +144,8 @@ export class OpenAPIService {
   /**
    * Merge schemas from all schema YAML files
    */
-  private mergeAllSchemas(): Record<string, any> {
-    const allSchemas: Record<string, any> = {};
+  private mergeAllSchemas(): Record<string, unknown> {
+    const allSchemas: Record<string, unknown> = {};
 
     // Read from schemas directory
     const schemasDir = join(this.docsDir, OPENAPI_DOCS.SCHEMAS_DIR);
@@ -158,8 +158,8 @@ export class OpenAPIService {
   /**
    * Read all YAML files from schemas directory and extract schemas
    */
-  private readSchemasFromDirectory(directory: string): Record<string, any> {
-    const schemas: Record<string, any> = {};
+  private readSchemasFromDirectory(directory: string): Record<string, unknown> {
+    const schemas: Record<string, unknown> = {};
 
     if (!existsSync(directory)) {
       return schemas;
@@ -174,7 +174,7 @@ export class OpenAPIService {
         const filePath = join(directory, file);
         try {
           const content = readFileSync(filePath, 'utf8');
-          const parsed = yaml.load(content) as any;
+          const parsed = yaml.load(content) as { components?: { schemas?: Record<string, unknown> } };
 
           if (parsed?.components?.schemas) {
             Object.assign(schemas, parsed.components.schemas);
@@ -196,26 +196,29 @@ export class OpenAPIService {
    * Converts refs like "./schemas/period.yaml#/components/schemas/Period"
    * to "#/components/schemas/Period"
    */
-  private resolveRefs(obj: any): any {
+  private resolveRefs<T>(obj: T): T {
     if (obj === null || typeof obj !== 'object') {
       return obj;
     }
 
     if (Array.isArray(obj)) {
-      return obj.map((item) => this.resolveRefs(item));
+      return obj.map((item) => this.resolveRefs(item)) as unknown as T;
     }
 
-    const resolved: any = {};
+    const resolved: { [key: string]: unknown } = {};
     for (const key in obj) {
-      if (key === '$ref' && typeof obj[key] === 'string') {
-        // Resolve relative $ref to absolute path
-        resolved[key] = this.resolveRefPath(obj[key]);
-      } else {
-        resolved[key] = this.resolveRefs(obj[key]);
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        const value = obj[key as keyof typeof obj];
+        if (key === '$ref' && typeof value === 'string') {
+          // Resolve relative $ref to absolute path
+          resolved[key] = this.resolveRefPath(value);
+        } else {
+          resolved[key] = this.resolveRefs(value);
+        }
       }
     }
 
-    return resolved;
+    return resolved as T;
   }
 
   /**

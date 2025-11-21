@@ -3,17 +3,16 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Calendar,
+  TrendingUp,
   CheckCircle2,
+  Upload,
   FileCheck,
-  Target,
-  FileText,
-  FileWarning,
   Clock,
+  AlertCircle,
 } from 'lucide-react';
 import Link from 'next/link';
 import type { PeriodSummary } from '@/src/frontend/lib/api-client';
-import type { PeriodWithKPI, WalrusBlobWithAudit } from '@/src/frontend/lib/mock-data';
-import { mockDeals } from '@/src/frontend/lib/mock-data';
+import { AuditProgressBadge } from '@/src/frontend/components/audit/AuditProgressBadge';
 
 interface PeriodCardProps {
   period: PeriodSummary;
@@ -22,31 +21,52 @@ interface PeriodCardProps {
 }
 
 export function PeriodCard({ period, dealId, userRole }: PeriodCardProps) {
-  // Get period data from mock deals
-  const deal = mockDeals.find(d => d.dealId === dealId);
-  const periodWithKPI = deal?.periods?.find(p => p.periodId === period.periodId) as PeriodWithKPI | undefined;
+  const getKpiStatusColor = (status: string) => {
+    switch (status) {
+      case 'approved':
+        return 'secondary';
+      case 'pending':
+        return 'default';
+      case 'not_started':
+        return 'outline';
+      default:
+        return 'outline';
+    }
+  };
 
-  const isKpiAchieved = periodWithKPI?.kpiAchieved || false;
+  const getKpiStatusLabel = (status: string) => {
+    const labels: Record<string, string> = {
+      approved: 'KPI Approved',
+      pending: 'KPI Pending',
+      not_started: 'Not Started',
+    };
+    return labels[status] || status;
+  };
 
-  // Calculate audit status statistics
-  const walrusBlobs = periodWithKPI?.walrusBlobs as WalrusBlobWithAudit[] | undefined;
-  const auditStats = walrusBlobs?.reduce(
-    (acc, blob) => {
-      const status = blob.reviewStatus || 'pending';
-      acc[status] = (acc[status] || 0) + 1;
-      return acc;
-    },
-    { approved: 0, pending: 0, changes_requested: 0 } as Record<string, number>
-  ) || { approved: 0, pending: 0, changes_requested: 0 };
+  const getSettlementStatusColor = (status: string) => {
+    switch (status) {
+      case 'settled':
+        return 'secondary';
+      case 'pending_seller':
+      case 'pending_auditor':
+      case 'pending_buyer':
+        return 'default';
+      case 'not_started':
+        return 'outline';
+      default:
+        return 'outline';
+    }
+  };
 
-  const formatCurrency = (amount: number | undefined) => {
-    if (amount === undefined) return 'N/A';
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
+  const getSettlementStatusLabel = (status: string) => {
+    const labels: Record<string, string> = {
+      settled: 'Settled',
+      pending_seller: 'Pending Seller Upload',
+      pending_auditor: 'Pending Auditor Review',
+      pending_buyer: 'Pending Buyer Approval',
+      not_started: 'Not Started',
+    };
+    return labels[status] || status;
   };
 
   const formatDate = (date: any) => {
@@ -64,12 +84,15 @@ export function PeriodCard({ period, dealId, userRole }: PeriodCardProps) {
   };
 
   const getActionButton = () => {
+    // All roles can view period details (documents page)
+    // Button variant and text changes based on role
     const hasDocuments = period.dataUploadProgress && period.dataUploadProgress.blobCount > 0;
     const isSettled = period.settlementStatus === 'settled';
 
+    // Show the button for all roles
     if (userRole === 'buyer') {
       return (
-        <Button asChild size="sm" variant={isSettled ? 'outline' : 'default'} className="w-full">
+        <Button asChild size="sm" variant={isSettled ? 'outline' : 'default'}>
           <Link href={`/deals/${dealId}/periods/${period.periodId}/upload`}>
             <FileCheck className="mr-2 h-4 w-4" />
             {isSettled ? 'View Period Details' : 'Manage Documents'}
@@ -80,7 +103,7 @@ export function PeriodCard({ period, dealId, userRole }: PeriodCardProps) {
 
     if (userRole === 'seller') {
       return (
-        <Button asChild size="sm" variant="outline" className="w-full">
+        <Button asChild size="sm" variant="outline">
           <Link href={`/deals/${dealId}/periods/${period.periodId}/upload`}>
             <FileCheck className="mr-2 h-4 w-4" />
             View Period Details
@@ -91,8 +114,8 @@ export function PeriodCard({ period, dealId, userRole }: PeriodCardProps) {
 
     if (userRole === 'auditor') {
       return (
-        <Button asChild size="sm" variant={hasDocuments ? 'default' : 'outline'} className="w-full">
-          <Link href={`/deals/${dealId}/periods/${period.periodId}/review`}>
+        <Button asChild size="sm" variant={hasDocuments ? 'default' : 'outline'}>
+          <Link href={`/deals/${dealId}/periods/${period.periodId}/upload`}>
             <FileCheck className="mr-2 h-4 w-4" />
             {hasDocuments ? 'Review Documents' : 'View Period Details'}
           </Link>
@@ -104,126 +127,104 @@ export function PeriodCard({ period, dealId, userRole }: PeriodCardProps) {
   };
 
   return (
-    <Card className={isKpiAchieved ? 'border-green-500 border-2' : ''}>
+    <Card className={period.nextAction?.actor === userRole ? 'border-primary' : ''}>
       <CardHeader>
         <div className="flex items-start justify-between">
           <div className="flex-1">
             <CardTitle className="text-xl mb-2">{period.name}</CardTitle>
             <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant="outline" className="capitalize">
-                <Calendar className="mr-1 h-3 w-3" />
-                {formatDate(period.dateRange.start)} - {formatDate(period.dateRange.end)}
+              <Badge variant={getKpiStatusColor(period.kpiStatus)}>
+                {getKpiStatusLabel(period.kpiStatus)}
               </Badge>
-              {period.settlementStatus === 'settled' && (
-                <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">
-                  <CheckCircle2 className="mr-1 h-3 w-3" />
-                  Settled
-                </Badge>
-              )}
-              {isKpiAchieved && (
-                <Badge variant="default" className="bg-green-600">
-                  <Target className="mr-1 h-3 w-3" />
-                  KPI Achieved
-                </Badge>
-              )}
+              <Badge variant={getSettlementStatusColor(period.settlementStatus)}>
+                {getSettlementStatusLabel(period.settlementStatus)}
+              </Badge>
+              <AuditProgressBadge dealId={dealId} periodId={period.periodId} />
             </div>
           </div>
+          {period.settlementStatus === 'settled' && (
+            <CheckCircle2 className="h-6 w-6 text-green-600" />
+          )}
         </div>
       </CardHeader>
 
       <CardContent>
         <div className="space-y-4">
-          {/* Documents Upload Status */}
-          {period.dataUploadProgress && period.dataUploadProgress.blobCount > 0 && (
-            <div className="bg-muted/50 rounded-lg p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-primary" />
-                  <span className="text-sm font-medium">Documents Uploaded</span>
-                </div>
-                <span className="text-lg font-bold text-primary">
-                  {period.dataUploadProgress.blobCount}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Audit Status Statistics */}
-          {walrusBlobs && walrusBlobs.length > 0 && (
-            <div className="space-y-2">
-              <div className="text-sm font-medium mb-2">Audit Status</div>
-              <div className="grid grid-cols-3 gap-2">
-                {/* Approved */}
-                <div className="bg-green-50 dark:bg-green-950/20 rounded-lg p-3 text-center">
-                  <div className="flex items-center justify-center gap-1 mb-1">
-                    <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-                    <span className="text-xs font-medium text-green-700 dark:text-green-300">
-                      Approved
-                    </span>
-                  </div>
-                  <div className="text-xl font-bold text-green-600 dark:text-green-400">
-                    {auditStats.approved}
-                  </div>
-                </div>
-
-                {/* Pending */}
-                <div className="bg-yellow-50 dark:bg-yellow-950/20 rounded-lg p-3 text-center">
-                  <div className="flex items-center justify-center gap-1 mb-1">
-                    <Clock className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-                    <span className="text-xs font-medium text-yellow-700 dark:text-yellow-300">
-                      Pending
-                    </span>
-                  </div>
-                  <div className="text-xl font-bold text-yellow-600 dark:text-yellow-400">
-                    {auditStats.pending}
-                  </div>
-                </div>
-
-                {/* Changes Requested */}
-                <div className="bg-orange-50 dark:bg-orange-950/20 rounded-lg p-3 text-center">
-                  <div className="flex items-center justify-center gap-1 mb-1">
-                    <FileWarning className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-                    <span className="text-xs font-medium text-orange-700 dark:text-orange-300">
-                      Changes
-                    </span>
-                  </div>
-                  <div className="text-xl font-bold text-orange-600 dark:text-orange-400">
-                    {auditStats.changes_requested}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Settlement Information (for achieved KPI) */}
-          {isKpiAchieved && periodWithKPI?.settlement && (
-            <div className="border-2 border-green-500 bg-green-50 dark:bg-green-950/20 rounded-lg p-4 space-y-2">
-              <div className="flex items-center gap-2 text-green-700 dark:text-green-400 font-semibold">
-                <CheckCircle2 className="h-5 w-5" />
-                <span>Settlement Completed</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Payout Amount</span>
-                <span className="text-xl font-bold text-green-600 dark:text-green-400">
-                  {formatCurrency(periodWithKPI.settlement.payoutAmount)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Settlement Date</span>
-                <span>{formatDate(periodWithKPI.settlement.settledAt)}</span>
-              </div>
-              {periodWithKPI.settlement.txHash && (
-                <div className="text-xs text-muted-foreground font-mono pt-2 border-t">
-                  TX: {periodWithKPI.settlement.txHash.slice(0, 20)}...
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Action Button */}
-          <div className="pt-2">
-            {getActionButton()}
+          {/* Date Range */}
+          <div className="flex items-center gap-2 text-sm">
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <span className="text-muted-foreground">
+              {formatDate(period.dateRange.start)} - {formatDate(period.dateRange.end)}
+            </span>
           </div>
+
+          {/* KPI Value */}
+          {period.kpiValue !== undefined && (
+            <div className="flex items-center justify-between bg-muted/50 px-3 py-2 rounded">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">KPI Value</span>
+              </div>
+              <span className="text-lg font-bold">
+                ${period.kpiValue.toLocaleString()}
+              </span>
+            </div>
+          )}
+
+          {/* Data Upload Progress */}
+          {period.dataUploadProgress && period.dataUploadProgress.blobCount > 0 && (
+            <div className="text-sm">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-muted-foreground">Documents Uploaded</span>
+                <span className="font-medium">{period.dataUploadProgress.blobCount} files</span>
+              </div>
+              <div className="w-full bg-muted rounded-full h-2">
+                <div
+                  className="bg-primary h-2 rounded-full transition-all"
+                  style={{
+                    width: `${period.dataUploadProgress.completeness}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Settlement Amount */}
+          {period.settlementAmount !== undefined && (
+            <div className="flex items-center justify-between pt-2 border-t">
+              <span className="text-sm font-medium">Settlement Amount</span>
+              <span className="text-lg font-bold text-green-600">
+                ${period.settlementAmount.toLocaleString()}
+              </span>
+            </div>
+          )}
+
+          {/* Next Action */}
+          {period.nextAction && (
+            <div className="pt-2 border-t">
+              <div className="flex items-start gap-2 mb-3">
+                {period.nextAction.actor === userRole ? (
+                  <AlertCircle className="h-4 w-4 text-primary mt-0.5" />
+                ) : (
+                  <Clock className="h-4 w-4 text-muted-foreground mt-0.5" />
+                )}
+                <div className="flex-1">
+                  <div className="text-sm font-medium">
+                    {period.nextAction.actor === userRole ? 'Action Required' : 'Next Action'}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {period.nextAction.action}
+                  </div>
+                  {period.nextAction.deadline && (
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Deadline: {formatDate(period.nextAction.deadline)}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {getActionButton()}
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

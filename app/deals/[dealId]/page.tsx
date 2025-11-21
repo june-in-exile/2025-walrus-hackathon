@@ -176,9 +176,30 @@ export default function DealDashboardPage() {
               <Card>
                 <CardContent className="pt-6 pb-6">
                   <div className="text-center py-8">
-                    <p className="text-muted-foreground">
-                      No periods configured yet. Periods will be created manually as the earn-out agreement progresses.
+                    <div className="flex justify-center mb-4">
+                      <div className="p-3 rounded-full bg-muted">
+                        <AlertCircle className="h-8 w-8 text-muted-foreground" />
+                      </div>
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">No Periods Configured</h3>
+                    <p className="text-muted-foreground mb-4 max-w-md mx-auto">
+                      {dealInfo.status === 'draft' ? (
+                        dealInfo.userRole === 'buyer' ? (
+                          'This deal needs earn-out parameters to be configured. Set up the periods, KPI thresholds, and payout formulas to activate this deal.'
+                        ) : (
+                          'This deal is pending configuration by the buyer. You will be notified once earn-out parameters are set.'
+                        )
+                      ) : (
+                        'No earn-out periods have been configured for this deal yet.'
+                      )}
                     </p>
+                    {dealInfo.userRole === 'buyer' && dealInfo.status === 'draft' && (
+                      <Button asChild>
+                        <Link href={`/deals/${dealId}/setup`}>
+                          Configure Earn-out Parameters
+                        </Link>
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>

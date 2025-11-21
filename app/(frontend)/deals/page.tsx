@@ -3,7 +3,7 @@
 import { useCurrentAccount } from '@mysten/dapp-kit';
 import { useRole } from '@/src/frontend/contexts/RoleContext';
 import { useDeals, useDealStats } from '@/src/frontend/hooks/useDeals';
-import { DealCard } from '@/src/frontend/components/deals/DealCard';
+import { DealCard } from '@/src/frontend/components/features/deals/DealCard';
 import { WalletButton } from '@/src/frontend/components/wallet/WalletButton';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';

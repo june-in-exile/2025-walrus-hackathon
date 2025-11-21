@@ -1,11 +1,10 @@
 /**
  * React Query hooks for Dashboard
- * Uses mock data for now, will be replaced with real API calls later
+ * Calls real API endpoints
  */
 
 import { useQuery } from '@tanstack/react-query';
 import type { DashboardResponse } from '@/src/frontend/lib/api-client';
-import { getDashboardByDealId } from '@/src/frontend/lib/mock-data';
 import { useRole } from '@/src/frontend/contexts/RoleContext';
 
 // Query keys
@@ -24,12 +23,15 @@ export function useDashboard(dealId: string) {
   return useQuery<DashboardResponse>({
     queryKey: dashboardKeys.detail(dealId, currentRole),
     queryFn: async () => {
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      const params = new URLSearchParams();
+      if (currentRole) params.set('role', currentRole);
 
-      // Return mock dashboard data based on dealId and current role
-      // In real implementation, this would call the API with dealId
-      return getDashboardByDealId(dealId, currentRole);
+      const response = await fetch(`/api/v1/deals/${dealId}/dashboard?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch dashboard');
+      }
+
+      return response.json();
     },
     enabled: !!dealId,
   });

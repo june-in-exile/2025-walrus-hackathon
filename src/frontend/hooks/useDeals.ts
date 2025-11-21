@@ -1,6 +1,6 @@
 /**
  * React Query hooks for Deals
- * Uses mock data for now, will be replaced with real API calls later
+ * Calls real API endpoints
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -11,7 +11,6 @@ import type {
   CreateDealRequest,
   CreateDealResponse,
 } from '@/src/frontend/lib/api-client';
-import { mockDealSummaries, mockDeals, MOCK_ADDRESSES } from '@/src/frontend/lib/mock-data';
 
 // Query keys
 export const dealKeys = {
@@ -29,21 +28,15 @@ export function useDeals(role?: 'buyer' | 'seller' | 'auditor') {
   return useQuery<DealListResponse>({
     queryKey: dealKeys.list(role || 'all'),
     queryFn: async () => {
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      const params = new URLSearchParams();
+      if (role) params.set('role', role);
 
-      // Return mock data
-      const filteredDeals = role
-        ? mockDealSummaries.filter((deal) => deal.userRole === role)
-        : mockDealSummaries;
+      const response = await fetch(`/api/v1/deals?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch deals');
+      }
 
-      return {
-        items: filteredDeals,
-        total: filteredDeals.length,
-        hasMore: false,
-        limit: 20,
-        offset: 0,
-      };
+      return response.json();
     },
   });
 }
@@ -55,11 +48,15 @@ export function useDeal(dealId: string) {
   return useQuery<Deal | undefined>({
     queryKey: dealKeys.detail(dealId),
     queryFn: async () => {
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      const response = await fetch(`/api/v1/deals/${dealId}`);
+      if (!response.ok) {
+        if (response.status === 404) {
+          return undefined;
+        }
+        throw new Error('Failed to fetch deal');
+      }
 
-      // Find deal in mock data
-      return mockDeals.find((deal) => deal.dealId === dealId);
+      return response.json();
     },
     enabled: !!dealId,
   });
@@ -73,50 +70,19 @@ export function useCreateDeal() {
 
   return useMutation<CreateDealResponse, Error, CreateDealRequest>({
     mutationFn: async (request: CreateDealRequest) => {
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      // Create mock deal
-      const newDeal: Deal = {
-        dealId: `0x${Math.random().toString(16).substring(2).padEnd(64, '0')}`,
-        name: request.name,
-        agreementDate: request.agreementDate as any,
-        currency: request.currency,
-        buyer: request.buyerAddress,
-        seller: request.sellerAddress,
-        auditor: request.auditorAddress,
-        status: 'draft',
-        periods: [],
-        metadata: request.metadata,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      // Add to mock data (in real app, this would be server-side)
-      mockDeals.push(newDeal);
-
-      const dealSummary: DealSummary = {
-        dealId: newDeal.dealId,
-        name: newDeal.name,
-        agreementDate: newDeal.agreementDate as any,
-        currency: newDeal.currency,
-        status: newDeal.status,
-        userRole: 'buyer',
-        periodCount: 0,
-        settledPeriods: 0,
-        lastActivity: newDeal.createdAt as any,
-      };
-
-      mockDealSummaries.push(dealSummary);
-
-      return {
-        deal: newDeal,
-        transaction: {
-          txBytes: 'mock_tx_bytes_base64_encoded',
-          description: `Create earn-out deal: ${newDeal.name}`,
-          estimatedGas: 1000000,
+      const response = await fetch('/api/v1/deals', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-      };
+        body: JSON.stringify(request),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create deal');
+      }
+
+      return response.json();
     },
     onSuccess: () => {
       // Invalidate and refetch deals list

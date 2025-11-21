@@ -9,6 +9,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from 'sonner';
 import { useDashboard } from '@/src/frontend/hooks/useDashboard';
+import { useWalrusUpload, type DataType } from '@/src/frontend/hooks/useWalrusUpload';
 import { getPeriodBlobs } from '@/src/frontend/lib/mock-periods';
 import { WalletButton } from '@/src/frontend/components/wallet/WalletButton';
 import { FileUploadZone } from '@/src/frontend/components/upload/FileUploadZone';
@@ -73,7 +74,7 @@ export default function DocumentsPage() {
   const dealId = params.dealId as string;
   const periodId = params.periodId as string;
   const { data: dashboard, isLoading } = useDashboard(dealId);
-  const [isUploading, setIsUploading] = useState(false);
+  const { upload: uploadToWalrus, isUploading } = useWalrusUpload();
   const [uploadedFiles, setUploadedFiles] = useState<any[]>([]);
   const [requestChangesModal, setRequestChangesModal] = useState<{
     open: boolean;
@@ -96,7 +97,6 @@ export default function DocumentsPage() {
   const watchDataType = form.watch('dataType');
 
   const onSubmit = async (data: UploadFormData) => {
-    setIsUploading(true);
     try {
       console.log('Uploading file:', {
         dealId,
@@ -107,40 +107,49 @@ export default function DocumentsPage() {
         description: data.description,
       });
 
-      // TODO: Implement actual Walrus upload
-      // 1. Encrypt file using Seal SDK
-      // 2. Upload to Walrus via relay API
-      // 3. Store blob reference on-chain
+      // Upload to Walrus with Seal encryption
+      const result = await uploadToWalrus({
+        file: data.file,
+        dealId,
+        periodId,
+        dataType: data.dataType as DataType,
+        customDataType: data.customDataType,
+        description: data.description,
+        enableEncryption: true, // Enable Seal encryption
+        onSuccess: (uploadResult) => {
+          // Add to uploaded files list
+          setUploadedFiles((prev) => [
+            ...prev,
+            {
+              blobId: uploadResult.blobId,
+              filename: uploadResult.filename,
+              dataType: data.dataType,
+              customDataType: data.customDataType,
+              description: data.description,
+              size: uploadResult.size,
+              uploadedAt: new Date(uploadResult.uploadedAt),
+              reviewStatus: 'pending',
+            },
+          ]);
 
-      // Simulate upload
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // Add to uploaded files list
-      setUploadedFiles((prev) => [
-        ...prev,
-        {
-          filename: data.file.name,
-          dataType: data.dataType,
-          customDataType: data.customDataType,
-          description: data.description,
-          size: data.file.size,
-          uploadedAt: new Date(),
-          reviewStatus: 'pending',
+          // Reset form
+          form.reset({
+            dataType: 'revenue_journal',
+            description: '',
+          });
         },
-      ]);
-
-      // Reset form
-      form.reset({
-        dataType: 'revenue_journal',
-        description: '',
+        onError: (error) => {
+          console.error('Failed to upload file:', error);
+        },
       });
 
-      toast.success('File uploaded successfully!');
+      if (!result) {
+        // Upload was cancelled or failed (error already shown by hook)
+        return;
+      }
     } catch (error) {
       console.error('Failed to upload file:', error);
       toast.error('Failed to upload file. Please try again.');
-    } finally {
-      setIsUploading(false);
     }
   };
 

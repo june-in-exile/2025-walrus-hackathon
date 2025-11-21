@@ -1,0 +1,194 @@
+paths:
+  /walrus/download/{blobId}:
+    get:
+      summary: Download encrypted file from Walrus
+      description: |
+        **Purpose**: Download encrypted financial documents from Walrus storage.
+
+        **Encryption & Decryption**:
+        - Files are stored encrypted on Walrus
+        - Backend downloads and returns encrypted blob
+        - **Frontend is responsible for decryption** using @mysten/seal SDK
+        - Response headers provide Seal policy info needed for decryption
+
+        **Access Control**:
+        - User must be authenticated with Sui signature
+        - User must be a participant in the specified deal
+        - Seal policy determines who can decrypt (buyer/seller/auditor)
+        - Different roles may have different decryption capabilities
+
+        **Decryption Workflow** (Frontend):
+        1. Receive encrypted blob from this endpoint
+        2. Extract Seal policy info from response headers (X-Seal-Package-Id, X-Seal-Whitelist-Id)
+        3. Initialize Seal SDK with policy
+        4. Call seal.decrypt() to get plaintext
+        5. Present decrypted file to user
+
+        **Why dealId Required**:
+        - Authorization check: Verify user is a deal participant
+        - Seal policy lookup: Determine which decryption keys to use
+        - Audit trail: Log who accessed which deal's files
+      operationId: downloadFromWalrus
+      tags:
+        - Walrus
+        - File Download
+      parameters:
+        - name: blobId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: |
+            Walrus blob identifier (returned from upload endpoint)
+          example: "blob_2Nf8pQz3Xm7Yk5Rd9Wv1Bc6Lt4Hs"
+        - name: dealId
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^0x[a-fA-F0-9]{64}$'
+          description: |
+            Deal ID for authorization and policy lookup.
+            Required to verify user has permission to access this blob.
+          example: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+        - name: X-Sui-Address
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: '^0x[a-fA-F0-9]{64}$'
+          description: Sui wallet address of the requester
+        - name: X-Sui-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Base64-encoded signature of the timestamp message
+        - name: X-Sui-Signature-Message
+          in: header
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: |
+            ISO timestamp that was signed (e.g., "2025-11-20T10:30:45.123Z").
+            Must be within 5 minutes of current time to prevent replay attacks.
+      responses:
+        '200':
+          description: Encrypted blob downloaded successfully
+          headers:
+            X-Seal-Package-Id:
+              description: Seal package ID for decryption
+              schema:
+                type: string
+              example: "0xseal_package_000000000000000000000000000000000000000000000000"
+            X-Seal-Whitelist-Id:
+              description: Seal whitelist object ID for access control verification
+              schema:
+                type: string
+              example: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+            Content-Type:
+              description: Always application/octet-stream for encrypted binary data
+              schema:
+                type: string
+                enum: [application/octet-stream]
+            Content-Length:
+              description: Size of encrypted blob in bytes
+              schema:
+                type: integer
+              example: 2048576
+            Content-Disposition:
+              description: Suggests filename for download (attachment; filename="encrypted_blob")
+              schema:
+                type: string
+              example: 'attachment; filename="blob_2Nf8pQz3Xm7Yk5Rd9Wv1Bc6Lt4Hs.enc"'
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+                description: |
+                  Encrypted file contents (ciphertext).
+                  Frontend must decrypt using Seal SDK with provided policy headers.
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/ValidationError'
+              examples:
+                missingBlobId:
+                  value:
+                    error: "ValidationError"
+                    message: "Blob ID is required"
+                    statusCode: 400
+                missingDealId:
+                  value:
+                    error: "ValidationError"
+                    message: "dealId query parameter is required for authorization"
+                    statusCode: 400
+                    details:
+                      example: "/api/v1/walrus/download/blob_2Nf8pQz3Xm7Yk5Rd9Wv1Bc6Lt4Hs?dealId=0x1234..."
+        '401':
+          description: Unauthorized - Missing or invalid authentication
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/UnauthorizedError'
+        '403':
+          description: Forbidden - User not authorized to access this blob
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/ForbiddenError'
+              example:
+                error: "ForbiddenError"
+                message: "User is not authorized to download files from this deal"
+                statusCode: 403
+                details:
+                  reason: "User is not a participant in the specified deal"
+                  dealId: "0x1234..."
+                  userAddress: "0xuser..."
+        '404':
+          description: Blob not found
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/NotFoundError'
+              examples:
+                blobNotFound:
+                  value:
+                    error: "NotFoundError"
+                    message: "Blob not found"
+                    statusCode: 404
+                    details:
+                      blobId: "blob_2Nf8pQz3Xm7Yk5Rd9Wv1Bc6Lt4Hs"
+                dealNotFound:
+                  value:
+                    error: "NotFoundError"
+                    message: "Deal not found"
+                    statusCode: 404
+                    details:
+                      dealId: "0x1234..."
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/ErrorResponse'
+              examples:
+                walrusError:
+                  value:
+                    error: "WalrusError"
+                    message: "Failed to download blob from Walrus"
+                    statusCode: 500
+                    details:
+                      reason: "Walrus aggregator unavailable"
+                      blobId: "blob_2Nf8pQz3Xm7Yk5Rd9Wv1Bc6Lt4Hs"
+                sealPolicyError:
+                  value:
+                    error: "SealError"
+                    message: "Failed to retrieve Seal policy for deal"
+                    statusCode: 500
+                    details:
+                      dealId: "0x1234..."

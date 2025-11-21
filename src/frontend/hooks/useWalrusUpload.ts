@@ -51,15 +51,7 @@ function setPersistedSignatureCache(cache: SignatureCache): void {
   }
 }
 
-export type DataType =
-  | 'revenue_journal'
-  | 'ebitda_report'
-  | 'expense_report'
-  | 'balance_sheet'
-  | 'cash_flow'
-  | 'kpi_calculation'
-  | 'audit_report'
-  | 'custom';
+export type DataType = 'revenue_report' | 'expense_report';
 
 export interface WalrusUploadOptions {
   file: File;
@@ -129,11 +121,8 @@ export function useWalrusUpload(): UseWalrusUploadReturn {
         if (enableEncryption) {
           toast.loading('Encrypting file...', { id: 'walrus-upload' });
 
-  const whitelistObjectId = process.env.NEXT_PUBLIC_SEAL_POLICY_OBJECT_ID;
-  const packageId = process.env.NEXT_PUBLIC_EARNOUT_PACKAGE_ID;
-
-  const {
-    mutate: uploadFile,
+          const whitelistObjectId = process.env.NEXT_PUBLIC_SEAL_POLICY_OBJECT_ID;
+          const packageId = process.env.NEXT_PUBLIC_EARNOUT_PACKAGE_ID;
 
           if (!packageId || !whitelistObjectId) {
             throw new Error(

@@ -57,14 +57,7 @@ export function FileUploadZone({
 
       if (enableEncryption) {
         // Get Seal configuration from environment
-const FileUploadZone = ({ dealId, periodId, onUploadSuccess }: FileUploadZoneProps) => {
-  const { address } = useWallet();
-  const whitelistObjectId = process.env.NEXT_PUBLIC_SEAL_POLICY_OBJECT_ID;
-  const packageId = process.env.NEXT_PUBLIC_EARNOUT_PACKAGE_ID;
-
-  const {
-    getRootProps,
-
+        const packageId = process.env.NEXT_PUBLIC_EARNOUT_PACKAGE_ID;
         const whitelistObjectId = process.env.NEXT_PUBLIC_SEAL_POLICY_OBJECT_ID;
 
         if (!packageId || !whitelistObjectId) {

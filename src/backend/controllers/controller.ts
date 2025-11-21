@@ -66,6 +66,15 @@ export class WalrusController {
     }
 
     try {
+      // Verify deal parameters are locked before proceeding
+      const deal = await suiService.getDeal(dealId);
+      if (!deal) {
+        throw new Error(`Deal with ID ${dealId} not found.`);
+      }
+      if (!deal.parametersLocked) {
+        throw new Error('Deal parameters have not been set. Please complete deal setup before uploading documents.');
+      }
+
       const tx = new Transaction();
 
       // Get the shared Clock object (0x6 is the standard Sui Clock object ID)
@@ -111,7 +120,7 @@ export class WalrusController {
       return { txBytes: toHex(txBytes), includesAuditRecord: true };
     } catch (error) {
       console.error('Failed to build register blob transaction:', error);
-      return { txBytes: '', includesAuditRecord: false };
+      throw error; // Re-throw the error to be caught by the calling handler
     }
   }
 

@@ -1,0 +1,43 @@
+components:
+  schemas:
+    KPIProposal:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: ["pending", "proposed", "rejected", "accepted"]
+          example: "proposed"
+        value:
+          type: integer
+          description: Proposed KPI value
+          example: 12000000
+        proposedBy:
+          type: string
+          description: Sui address of the proposer
+          pattern: '^0x[a-fA-F0-9]{64}$'
+          example: "0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+        proposedAt:
+          type: string
+          format: date-time
+          example: "2026-01-10T10:00:00Z"
+
+    KPIAttestation:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: ["pending", "attested", "rejected"]
+          example: "attested"
+        value:
+          type: integer
+          description: Attested KPI value
+          example: 12000000
+        attestedBy:
+          type: string
+          description: Sui address of the attester (auditor)
+          pattern: '^0x[a-fA-F0-9]{64}$'
+          example: "0x9876543210abcdef1234567890abcdef1234567890abcdef1234567890abcd"
+        attestedAt:
+          type: string
+          format: date-time
+          example: "2026-01-15T11:00:00Z"

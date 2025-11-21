@@ -53,8 +53,14 @@ interface CreateDealOptions {
   name: string;
   sellerAddress: string;
   auditorAddress: string;
-  startDate: string;  // ISO date string (YYYY-MM-DD)
-  onSuccess?: (dealId: string) => void;
+  startDateMs: number;
+  periodMonths: number;
+  kpiThreshold: number;
+  maxPayout: number;
+  subperiodIds: string[];
+  subperiodStartDates: number[];
+  subperiodEndDates: number[];
+  onSuccess?: (txDigest: string) => void;
   onError?: (error: Error) => void;
 }
 
@@ -74,7 +80,20 @@ export function useCreateDeal(): UseCreateDealReturn {
 
   const createDeal = useCallback(
     async (options: CreateDealOptions) => {
-      const { name, sellerAddress, auditorAddress, startDate, onSuccess, onError } = options;
+      const {
+        name,
+        sellerAddress,
+        auditorAddress,
+        startDateMs,
+        periodMonths,
+        kpiThreshold,
+        maxPayout,
+        subperiodIds,
+        subperiodStartDates,
+        subperiodEndDates,
+        onSuccess,
+        onError,
+      } = options;
 
       if (!currentAccount?.address) {
         const err = new Error('Wallet not connected');
@@ -135,7 +154,13 @@ export function useCreateDeal(): UseCreateDealReturn {
             name,
             sellerAddress,
             auditorAddress,
-            startDate,
+            startDateMs,
+            periodMonths,
+            kpiThreshold,
+            maxPayout,
+            subperiodIds,
+            subperiodStartDates,
+            subperiodEndDates,
             buyerAddress: currentAccount.address,
           }),
         });

@@ -2,7 +2,7 @@
 /* eslint-disable */
 /**
  * M&A Earn-out API
- * # M&A Earn-out Management API  This API powers a decentralized M&A earn-out tracking and settlement system built on **Sui blockchain**, **Walrus decentralized storage**, and **Seal encryption**.  ## System Overview  The system enables buyers (acquirers), sellers, and auditors to: - Create and manage earn-out agreements on-chain - Store encrypted financial documents on Walrus - Track KPIs and verify calculations transparently - Execute settlements automatically based on audited KPIs  ## Technology Stack  - **Blockchain**: Sui Network (smart contracts in Move) - **Storage**: Walrus (decentralized file storage) - **Encryption**: Seal (role-based access control) - **Frontend**: Next.js with @mysten/dapp-kit  ## Key Concepts  ### Deal An on-chain earn-out agreement with defined periods, KPI types, and payout formulas. Each deal has three roles: - **Buyer**: Creates deal, uploads data, proposes KPIs, executes settlements - **Seller**: Monitors progress, receives payouts - **Auditor**: Verifies data, attests KPIs  ### Period A time range (e.g., fiscal year) with specific KPI targets and earn-out formulas. Each period progresses through stages: 1. Data Collection (buyer uploads financial documents) 2. KPI Proposal (buyer proposes calculated KPI) 3. KPI Attestation (auditor verifies and approves) 4. Settlement (buyer executes payout to seller)  ### Walrus Blobs Encrypted financial documents stored on Walrus network. Access controlled by Seal policy on Sui blockchain.  ### KPI (Key Performance Indicator) Metrics like revenue, EBITDA, or custom metrics that determine earn-out amounts according to on-chain formulas.  ## Authentication  This API uses **Sui wallet signature-based authentication**. Every request must include: - `X-Sui-Address`: User\'s Sui wallet address - `X-Sui-Signature`: Signature proving ownership of the address  Role-based access control is enforced on-chain via Sui smart contracts.  ## Workflow  1. **Setup**: Buyer creates deal and sets earn-out parameters 2. **Data Upload**: Buyer uploads encrypted financial docs to Walrus (via upload relay) 3. **KPI Proposal**: After period ends, buyer proposes KPI value 4. **Verification**: Auditor decrypts docs, verifies calculations, attests KPI 5. **Settlement**: Buyer executes settlement, funds transferred to seller  ## API Organization  - **Deal Management**: Create and manage earn-out deals - **Parameters**: Configure earn-out formulas and periods - **Walrus**: Upload relay for encrypted file storage - **Timeline**: View data submission history - **KPI Management**: Propose and attest KPIs - **Settlement**: Execute earn-out payments - **Dashboard**: Aggregated view of deal status 
+ * # M&A Earn-out Management API  This API powers a decentralized M&A earn-out tracking and settlement system built on **Sui blockchain**, **Walrus decentralized storage**, and **Seal encryption**.  ## System Overview  The system enables buyers (acquirers), sellers, and auditors to: - Create and manage earn-out agreements on-chain - Store encrypted financial documents on Walrus - Track KPIs and verify calculations transparently - Execute settlements automatically based on audited KPIs  ## Technology Stack  - **Blockchain**: Sui Network (smart contracts in Move) - **Storage**: Walrus (decentralized file storage) - **Encryption**: Seal (role-based access control) - **Frontend**: Next.js with @mysten/dapp-kit  ## Key Concepts  ### Deal An on-chain earn-out agreement with defined periods, KPI types, and payout formulas. Each deal has three roles: - **Buyer**: Creates deal, uploads data, proposes KPIs, executes settlements - **Seller**: Monitors progress, receives payouts - **Auditor**: Verifies data, attests KPIs  ### Period A time range (e.g., fiscal year) with specific KPI targets and earn-out formulas. Each period progresses through stages: 1. Data Collection (buyer uploads financial documents) 2. KPI Proposal (buyer proposes calculated KPI) 3. KPI Attestation (auditor verifies and approves) 4. Settlement (buyer executes payout to seller)  ### Walrus Blobs Encrypted financial documents stored on Walrus network. Access controlled by Seal policy on Sui blockchain.  ### KPI (Key Performance Indicator) Metrics like revenue, EBITDA, or custom metrics that determine earn-out amounts according to on-chain formulas.  ## Authentication  This API uses **Sui wallet signature-based authentication**. Every request must include: - `X-Sui-Address`: User\'s Sui wallet address - `X-Sui-Signature`: Base64-encoded signature of the timestamp message - `X-Sui-Signature-Message`: ISO timestamp that was signed (e.g., \"2025-11-20T10:30:45.123Z\")  Signatures expire after **5 minutes** to prevent replay attacks. Role-based access control is enforced on-chain via Sui smart contracts.  ## Workflow  1. **Setup**: Buyer creates deal and sets earn-out parameters 2. **Data Upload**: Buyer uploads encrypted financial docs to Walrus (via upload relay) 3. **KPI Proposal**: After period ends, buyer proposes KPI value 4. **Verification**: Auditor decrypts docs, verifies calculations, attests KPI 5. **Settlement**: Buyer executes settlement, funds transferred to seller  ## API Organization  - **Deal Management**: Create and manage earn-out deals - **Parameters**: Configure earn-out formulas and periods - **Walrus**: Upload relay for encrypted file storage - **Timeline**: View data submission history - **KPI Management**: Propose and attest KPIs - **Settlement**: Execute earn-out payments - **Dashboard**: Aggregated view of deal status 
  *
  * The version of the OpenAPI document: 1.0.0
  * 
@@ -14,84 +14,54 @@
 
 import { exists, mapValues } from '../runtime';
 /**
- * Auditor's attestation of KPI value
+ * 
  * @export
  * @interface KPIAttestation
  */
 export interface KPIAttestation {
     /**
-     * Type of KPI attested
+     * 
      * @type {string}
      * @memberof KPIAttestation
      */
-    kpiType: string;
+    status?: KPIAttestationStatusEnum;
     /**
-     * Auditor-verified KPI value
+     * Attested KPI value
      * @type {number}
      * @memberof KPIAttestation
      */
-    attestedValue: number;
+    value?: number;
     /**
-     * Unit of measurement
+     * Sui address of the attester (auditor)
      * @type {string}
      * @memberof KPIAttestation
      */
-    unit: string;
+    attestedBy?: string;
     /**
-     * Sui address of auditor
-     * @type {string}
-     * @memberof KPIAttestation
-     */
-    attestedBy: string;
-    /**
-     * Attestation timestamp
+     * 
      * @type {Date}
      * @memberof KPIAttestation
      */
-    attestedAt: Date;
-    /**
-     * Whether KPI is approved
-     * @type {boolean}
-     * @memberof KPIAttestation
-     */
-    approved: boolean;
-    /**
-     * Final calculated payout amount
-     * @type {number}
-     * @memberof KPIAttestation
-     */
-    finalPayout?: number;
-    /**
-     * Auditor's notes
-     * @type {string}
-     * @memberof KPIAttestation
-     */
-    notes?: string;
-    /**
-     * Walrus blob IDs that were verified
-     * @type {Array<string>}
-     * @memberof KPIAttestation
-     */
-    verifiedBlobIds?: Array<string>;
-    /**
-     * Sui transaction hash for attestation
-     * @type {string}
-     * @memberof KPIAttestation
-     */
-    txHash?: string;
+    attestedAt?: Date;
 }
+
+
+/**
+ * @export
+ */
+export const KPIAttestationStatusEnum = {
+    Pending: 'pending',
+    Attested: 'attested',
+    Rejected: 'rejected'
+} as const;
+export type KPIAttestationStatusEnum = typeof KPIAttestationStatusEnum[keyof typeof KPIAttestationStatusEnum];
+
 
 /**
  * Check if a given object implements the KPIAttestation interface.
  */
 export function instanceOfKPIAttestation(value: object): boolean {
     let isInstance = true;
-    isInstance = isInstance && "kpiType" in value;
-    isInstance = isInstance && "attestedValue" in value;
-    isInstance = isInstance && "unit" in value;
-    isInstance = isInstance && "attestedBy" in value;
-    isInstance = isInstance && "attestedAt" in value;
-    isInstance = isInstance && "approved" in value;
 
     return isInstance;
 }
@@ -106,16 +76,10 @@ export function KPIAttestationFromJSONTyped(json: any, ignoreDiscriminator: bool
     }
     return {
         
-        'kpiType': json['kpiType'],
-        'attestedValue': json['attestedValue'],
-        'unit': json['unit'],
-        'attestedBy': json['attestedBy'],
-        'attestedAt': (new Date(json['attestedAt'])),
-        'approved': json['approved'],
-        'finalPayout': !exists(json, 'finalPayout') ? undefined : json['finalPayout'],
-        'notes': !exists(json, 'notes') ? undefined : json['notes'],
-        'verifiedBlobIds': !exists(json, 'verifiedBlobIds') ? undefined : json['verifiedBlobIds'],
-        'txHash': !exists(json, 'txHash') ? undefined : json['txHash'],
+        'status': !exists(json, 'status') ? undefined : json['status'],
+        'value': !exists(json, 'value') ? undefined : json['value'],
+        'attestedBy': !exists(json, 'attestedBy') ? undefined : json['attestedBy'],
+        'attestedAt': !exists(json, 'attestedAt') ? undefined : (new Date(json['attestedAt'])),
     };
 }
 
@@ -128,16 +92,10 @@ export function KPIAttestationToJSON(value?: KPIAttestation | null): any {
     }
     return {
         
-        'kpiType': value.kpiType,
-        'attestedValue': value.attestedValue,
-        'unit': value.unit,
+        'status': value.status,
+        'value': value.value,
         'attestedBy': value.attestedBy,
-        'attestedAt': (value.attestedAt.toISOString()),
-        'approved': value.approved,
-        'finalPayout': value.finalPayout,
-        'notes': value.notes,
-        'verifiedBlobIds': value.verifiedBlobIds,
-        'txHash': value.txHash,
+        'attestedAt': value.attestedAt === undefined ? undefined : (value.attestedAt.toISOString()),
     };
 }
 

@@ -16,15 +16,15 @@ export interface SubPeriod {
 }
 
 /**
- * Generate sub-periods from a start date to the current date (or specified end date)
+ * Generate sub-periods from a start date for a specified number of months
  *
  * @param startDateMs - Start date in milliseconds (from Deal.start_date)
- * @param endDateMs - Optional end date in milliseconds. Defaults to current time.
+ * @param periodMonths - Total number of months for the earn-out period (from Deal.period_months)
  * @returns Array of sub-periods
  */
 export function generateSubPeriods(
   startDateMs: number,
-  endDateMs?: number
+  periodMonths?: number
 ): SubPeriod[] {
   if (!startDateMs || startDateMs <= 0) {
     return [];
@@ -32,13 +32,18 @@ export function generateSubPeriods(
 
   const periods: SubPeriod[] = [];
   const startDate = new Date(startDateMs);
-  const endDate = endDateMs ? new Date(endDateMs) : new Date();
+
+  // If periodMonths is not specified or is 0, default to showing periods up to current date
+  // This maintains backward compatibility
+  const useCurrentDate = !periodMonths || periodMonths <= 0;
+  const endDate = useCurrentDate ? new Date() : null;
+  const maxPeriods = useCurrentDate ? 120 : periodMonths; // Safety limit or specified months
 
   // Start from the first day of the start month
   let currentDate = new Date(startDate);
   let periodIndex = 0;
 
-  while (currentDate <= endDate) {
+  while (periodIndex < maxPeriods) {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
 
@@ -51,30 +56,27 @@ export function generateSubPeriods(
     // Period end: last day of the month
     const periodEnd = new Date(year, month + 1, 0);
 
-    // Only include periods that have started
-    if (periodStart <= endDate) {
-      const monthNames = [
-        'January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'
-      ];
-
-      periods.push({
-        periodId: `period_${year}_${String(month + 1).padStart(2, '0')}`,
-        name: `${monthNames[month]} ${year}`,
-        startDate: formatDate(periodStart),
-        endDate: formatDate(periodEnd),
-        periodIndex,
-      });
+    // If using current date mode, only include periods that have started
+    if (useCurrentDate && periodStart > endDate!) {
+      break;
     }
+
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    periods.push({
+      periodId: `period_${year}_${String(month + 1).padStart(2, '0')}`,
+      name: `${monthNames[month]} ${year}`,
+      startDate: formatDate(periodStart),
+      endDate: formatDate(periodEnd),
+      periodIndex,
+    });
 
     // Move to next month
     currentDate = new Date(year, month + 1, 1);
     periodIndex++;
-
-    // Safety limit: max 120 months (10 years)
-    if (periodIndex > 120) {
-      break;
-    }
   }
 
   return periods;

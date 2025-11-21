@@ -16,7 +16,7 @@ components:
           description: |
             Sui object ID of the on-chain Deal
             Format: 0x + 64 hex characters
-          pattern: '^0x[a-fA-F0-9]{64}$'
+          pattern: "^0x[a-fA-F0-9]{64}$"
           example: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
         name:
           type: string
@@ -37,17 +37,17 @@ components:
         buyer:
           type: string
           description: Sui address of the buyer/acquirer
-          pattern: '^0x[a-fA-F0-9]{64}$'
+          pattern: "^0x[a-fA-F0-9]{64}$"
           example: "0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
         seller:
           type: string
           description: Sui address of the seller (optional, can be set later)
-          pattern: '^0x[a-fA-F0-9]{64}$'
+          pattern: "^0x[a-fA-F0-9]{64}$"
           example: "0xef012345678890abcdef1234567890abcdef1234567890abcdef1234567890"
         auditor:
           type: string
           description: Sui address of the auditor (optional, can be set later)
-          pattern: '^0x[a-fA-F0-9]{64}$'
+          pattern: "^0x[a-fA-F0-9]{64}$"
           example: "0x9876543210abcdef1234567890abcdef1234567890abcdef1234567890abcd"
         status:
           type: string
@@ -63,7 +63,7 @@ components:
           type: array
           description: List of earn-out periods
           items:
-            $ref: './period.yaml#/components/schemas/Period'
+            $ref: "./period.yaml#/components/schemas/Period"
         metadata:
           type: object
           description: Additional deal metadata (flexible key-value pairs)
@@ -90,6 +90,12 @@ components:
         - agreementDate
         - currency
         - buyerAddress
+        - periodMonths
+        - kpiThreshold
+        - maxPayout
+        - subperiodIds
+        - subperiodStartDates
+        - subperiodEndDates
       properties:
         name:
           type: string
@@ -109,17 +115,17 @@ components:
           example: "USD"
         buyerAddress:
           type: string
-          pattern: '^0x[a-fA-F0-9]{64}$'
+          pattern: "^0x[a-fA-F0-9]{64}$"
           description: Sui address of buyer
           example: "0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
         sellerAddress:
           type: string
-          pattern: '^0x[a-fA-F0-9]{64}$'
+          pattern: "^0x[a-fA-F0-9]{64}$"
           description: Sui address of seller (optional)
           example: "0xef012345678890abcdef1234567890abcdef1234567890abcdef1234567890"
         auditorAddress:
           type: string
-          pattern: '^0x[a-fA-F0-9]{64}$'
+          pattern: "^0x[a-fA-F0-9]{64}$"
           description: Sui address of auditor (optional)
           example: "0x9876543210abcdef1234567890abcdef1234567890abcdef1234567890abcd"
         metadata:
@@ -129,6 +135,39 @@ components:
           example:
             industry: "Technology"
             dealSize: "50M USD"
+        periodMonths:
+          type: integer
+          minimum: 1
+          maximum: 120
+          description: Total earn-out duration in months
+          example: 12
+        kpiThreshold:
+          type: integer
+          minimum: 0
+          description: Cumulative KPI target (in smallest unit)
+          example: 900000
+        maxPayout:
+          type: integer
+          minimum: 1
+          description: Maximum payout amount (in MIST for SUI)
+          example: 30000000
+        subperiodIds:
+          type: array
+          items:
+            type: string
+          description: List of subperiod IDs (e.g., "2025-11")
+        subperiodStartDates:
+          type: array
+          items:
+            type: integer
+            format: int64
+          description: List of subperiod start dates (Unix timestamp in ms)
+        subperiodEndDates:
+          type: array
+          items:
+            type: integer
+            format: int64
+          description: List of subperiod end dates (Unix timestamp in ms)
 
     CreateDealResponse:
       type: object
@@ -137,7 +176,7 @@ components:
         - transaction
       properties:
         deal:
-          $ref: '#/components/schemas/Deal'
+          $ref: "#/components/schemas/Deal"
         transaction:
           type: object
           description: |
@@ -162,13 +201,13 @@ components:
 
     DealListResponse:
       allOf:
-        - $ref: './errors.yaml#/components/schemas/PaginatedResponse'
+        - $ref: "./errors.yaml#/components/schemas/PaginatedResponse"
         - type: object
           properties:
             items:
               type: array
               items:
-                $ref: '#/components/schemas/DealSummary'
+                $ref: "#/components/schemas/DealSummary"
 
     DealSummary:
       type: object
@@ -223,15 +262,15 @@ components:
       properties:
         buyerAddress:
           type: string
-          pattern: '^0x[a-fA-F0-9]{64}$'
+          pattern: "^0x[a-fA-F0-9]{64}$"
           description: New buyer address (optional)
         sellerAddress:
           type: string
-          pattern: '^0x[a-fA-F0-9]{64}$'
+          pattern: "^0x[a-fA-F0-9]{64}$"
           description: New seller address (optional)
         auditorAddress:
           type: string
-          pattern: '^0x[a-fA-F0-9]{64}$'
+          pattern: "^0x[a-fA-F0-9]{64}$"
           description: New auditor address (optional)
 
     UpdateDealRolesResponse:
@@ -241,7 +280,7 @@ components:
         - transaction
       properties:
         deal:
-          $ref: '#/components/schemas/Deal'
+          $ref: "#/components/schemas/Deal"
         transaction:
           type: object
           description: Unsigned transaction to update roles on-chain

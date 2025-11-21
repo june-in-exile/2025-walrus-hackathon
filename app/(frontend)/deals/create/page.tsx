@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { ArrowLeft, Building2, Users, DollarSign, FileText, Upload, X, Package, Plus, Trash2, Wallet, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import type { AssetReference } from '@/src/shared/types/asset';
+import { generateSubPeriods, SubPeriod } from '@/src/shared/utils/period-calculator';
 
 const createDealSchema = z.object({
   // Basic Information
@@ -36,6 +37,10 @@ const createDealSchema = z.object({
   kpiTargetAmount: z.number().positive(),
   contingentConsiderationAmount: z.number().positive(),
   headquarterExpenseAllocationPercentage: z.number().min(0).max(1),
+
+  // New fields for set_parameters
+  kpiThreshold: z.number().min(0, 'KPI Threshold must be non-negative'),
+  maxPayout: z.number().min(1, 'Max Payout must be positive'),
 
   // Assets Management
   assets: z.array(z.object({
@@ -65,6 +70,8 @@ export default function CreateDealPage() {
       earnoutPeriodYears: 3,
       headquarterExpenseAllocationPercentage: 0.1,
       startDate: '2025-11-03',
+      kpiThreshold: 900000,
+      maxPayout: 30000000,
       assets: [{ assetID: '', originalCost: 0, estimatedUsefulLife_months: 120 }],
     },
   });
@@ -108,11 +115,15 @@ export default function CreateDealPage() {
       toast.success('MA Agreement uploaded successfully');
     }
   };
-
   const removeFile = () => {
     setUploadedFile(null);
     toast.info('MA Agreement removed');
   };
+
+  // generateSubPeriods imported at top-level
+
+  // ... (existing code) ...
+  // ... (existing code) ...
 
   const onSubmit = async (data: CreateDealFormData) => {
     if (!uploadedFile) {
@@ -132,16 +143,37 @@ export default function CreateDealPage() {
       estimatedUsefulLife_months: asset.estimatedUsefulLife_months,
     }));
 
+    // Calculate periodMonths
+    const startDate = new Date(data.startDate);
+    const endDate = new Date(startDate.getFullYear() + data.earnoutPeriodYears, startDate.getMonth(), startDate.getDate());
+    const periodMonths = (endDate.getFullYear() - startDate.getFullYear()) * 12 + (endDate.getMonth() - startDate.getMonth());
+
+    // Generate subperiods
+    const subperiods: SubPeriod[] = generateSubPeriods(startDate.getTime(), periodMonths);
+    const subperiodIds = subperiods.map(sp => sp.periodId);
+    const subperiodStartDates = subperiods.map(sp => new Date(sp.startDate).getTime());
+    const subperiodEndDates = subperiods.map(sp => new Date(sp.endDate).getTime());
+
+
     console.log('Creating deal with data:', data);
     console.log('MA Agreement file:', uploadedFile);
     console.log('Assets metadata:', { assets: assetsReferences });
+    console.log('Calculated periodMonths:', periodMonths);
+    console.log('Generated subperiods:', subperiods);
+
 
     // Create the deal on-chain
     await createDeal({
       name: data.dealName,
       sellerAddress: data.acquireeAddress,
       auditorAddress: data.auditorAddress,
-      startDate: data.startDate,
+      startDateMs: startDate.getTime(), // Pass startDate in milliseconds
+      periodMonths: periodMonths,
+      kpiThreshold: data.kpiThreshold,
+      maxPayout: data.maxPayout,
+      subperiodIds: subperiodIds,
+      subperiodStartDates: subperiodStartDates,
+      subperiodEndDates: subperiodEndDates,
       onSuccess: (txDigest) => {
         console.log('Deal created with transaction:', txDigest);
         console.log('MA Agreement file to upload:', uploadedFile);
@@ -319,38 +351,36 @@ export default function CreateDealPage() {
             </div>
 
             <div>
-              <Label htmlFor="kpiTargetAmount">KPI Target Amount (Net Profit)</Label>
+              <Label htmlFor="kpiThreshold">KPI Threshold (in smallest unit)</Label>
               <Input
-                id="kpiTargetAmount"
+                id="kpiThreshold"
                 type="number"
-                step="0.01"
+                step="1"
                 placeholder="e.g., 900000"
-                {...register('kpiTargetAmount', { valueAsNumber: true })}
+                {...register('kpiThreshold', { valueAsNumber: true })}
               />
-              {errors.kpiTargetAmount && (
-                <p className="text-sm text-destructive mt-1">{errors.kpiTargetAmount.message}</p>
+              {errors.kpiThreshold && (
+                <p className="text-sm text-destructive mt-1">{errors.kpiThreshold.message}</p>
               )}
               <p className="text-xs text-muted-foreground mt-1">
-                Cumulative net profit target to trigger earn-out payment
+                Cumulative KPI target (e.g., 10,000,000 for $10M)
               </p>
             </div>
 
             <div>
-              <Label htmlFor="contingentConsiderationAmount">Contingent Consideration Amount</Label>
+              <Label htmlFor="maxPayout">Max Payout (in MIST for SUI)</Label>
               <Input
-                id="contingentConsiderationAmount"
+                id="maxPayout"
                 type="number"
-                step="0.01"
+                step="1"
                 placeholder="e.g., 30000000"
-                {...register('contingentConsiderationAmount', { valueAsNumber: true })}
+                {...register('maxPayout', { valueAsNumber: true })}
               />
-              {errors.contingentConsiderationAmount && (
-                <p className="text-sm text-destructive mt-1">
-                  {errors.contingentConsiderationAmount.message}
-                </p>
+              {errors.maxPayout && (
+                <p className="text-sm text-destructive mt-1">{errors.maxPayout.message}</p>
               )}
               <p className="text-xs text-muted-foreground mt-1">
-                Amount to be paid if KPI target is met
+                Maximum payout amount (e.g., 50,000,000,000 MIST for 50 SUI)
               </p>
             </div>
 

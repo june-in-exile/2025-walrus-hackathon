@@ -450,6 +450,12 @@ export class SuiService {
     sellerAddress: string,
     auditorAddress: string,
     startDateMs: number,
+    periodMonths: number,
+    kpiThreshold: number,
+    maxPayout: number,
+    subperiodIds: string[],
+    subperiodStartDates: number[],
+    subperiodEndDates: number[],
     buyerAddress: string
   ): Promise<{ txBytes: string; estimatedGas: number }> {
     try {
@@ -465,6 +471,12 @@ export class SuiService {
         console.log('Seller:', sellerAddress);
         console.log('Auditor:', auditorAddress);
         console.log('Start Date (ms):', startDateMs);
+        console.log('Period Months:', periodMonths);
+        console.log('KPI Threshold:', kpiThreshold);
+        console.log('Max Payout:', maxPayout);
+        console.log('Subperiod IDs:', subperiodIds);
+        console.log('Subperiod Start Dates:', subperiodStartDates);
+        console.log('Subperiod End Dates:', subperiodEndDates);
       }
 
       const tx = new Transaction();
@@ -476,6 +488,12 @@ export class SuiService {
       //   seller: address,
       //   auditor: address,
       //   start_date: u64,
+      //   period_months: u64,
+      //   kpi_threshold: u64,
+      //   max_payout: u64,
+      //   subperiod_ids: vector<String>,
+      //   subperiod_start_dates: vector<u64>,
+      //   subperiod_end_dates: vector<u64>,
       //   ctx: &mut TxContext
       // )
       tx.moveCall({
@@ -485,6 +503,12 @@ export class SuiService {
           tx.pure.address(sellerAddress),
           tx.pure.address(auditorAddress),
           tx.pure.u64(startDateMs),
+          tx.pure.u64(periodMonths),
+          tx.pure.u64(kpiThreshold),
+          tx.pure.u64(maxPayout),
+          tx.pure.vector('string', subperiodIds),
+          tx.pure.vector('u64', subperiodStartDates),
+          tx.pure.vector('u64', subperiodEndDates),
         ],
       });
 

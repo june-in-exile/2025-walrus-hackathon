@@ -51,14 +51,8 @@ import Link from 'next/link';
 const uploadSchema = z.object({
   file: z.instanceof(File, { message: 'Please select a file' }),
   dataType: z.enum([
-    'revenue_journal',
-    'ebitda_report',
+    'revenue_report',
     'expense_report',
-    'balance_sheet',
-    'cash_flow',
-    'kpi_calculation',
-    'audit_report',
-    'custom',
   ]),
   customDataType: z.string().optional(),
   description: z.string().optional(),
@@ -89,7 +83,7 @@ export default function DocumentsPage() {
   const form = useForm<UploadFormData>({
     resolver: zodResolver(uploadSchema),
     defaultValues: {
-      dataType: 'revenue_journal',
+      dataType: 'revenue_report',
       description: '',
     },
   });
@@ -134,7 +128,7 @@ export default function DocumentsPage() {
 
           // Reset form
           form.reset({
-            dataType: 'revenue_journal',
+            dataType: 'revenue_report',
             description: '',
           });
         },
@@ -356,14 +350,8 @@ export default function DocumentsPage() {
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                  <SelectItem value="revenue_journal">Revenue Journal</SelectItem>
-                                  <SelectItem value="ebitda_report">EBITDA Report</SelectItem>
+                                  <SelectItem value="revenue_report">Revenue Report</SelectItem>
                                   <SelectItem value="expense_report">Expense Report</SelectItem>
-                                  <SelectItem value="balance_sheet">Balance Sheet</SelectItem>
-                                  <SelectItem value="cash_flow">Cash Flow Statement</SelectItem>
-                                  <SelectItem value="kpi_calculation">KPI Calculation</SelectItem>
-                                  <SelectItem value="audit_report">Audit Report</SelectItem>
-                                  <SelectItem value="custom">Custom</SelectItem>
                                 </SelectContent>
                               </Select>
                               <FormMessage />

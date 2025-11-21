@@ -39,12 +39,12 @@ module contracts::earnout {
         auditor: address,
         start_date: u64,              // Unix timestamp (ms) when earn-out begins
 
-        // Single period parameters (set via set_parameters, then locked)
+        // Single period parameters
         period_months: u64,           // Total earn-out duration in months
         kpi_threshold: u64,           // Cumulative KPI target to trigger payout
         max_payout: u64,              // Maximum earn-out payment amount
 
-        // Subperiods for document organization (created in set_parameters)
+        // Subperiods for document organization
         subperiods: vector<Subperiod>,
 
         // Settlement state
@@ -105,13 +105,7 @@ module contracts::earnout {
         start_date: u64
     }
 
-    public struct ParametersLocked has copy, drop {
-        deal_id: ID,
-        period_months: u64,
-        subperiod_count: u64,
-        kpi_threshold: u64,
-        max_payout: u64,
-    }
+
 
     public struct BlobAdded has copy, drop {
         deal_id: ID,
@@ -157,9 +151,6 @@ module contracts::earnout {
     /**
     Create a new earn-out deal.
 
-    The deal starts with no parameters set. Buyer must call set_parameters()
-    to configure the earn-out terms before any documents can be uploaded.
-
     Sui Integration:
     - Creates new Deal object
     - Creates and shares Whitelist for Seal encryption access control
@@ -170,9 +161,20 @@ module contracts::earnout {
         seller: address,
         auditor: address,
         start_date: u64,
+        period_months: u64,
+        kpi_threshold: u64,
+        max_payout: u64,
+        subperiod_ids: vector<String>,
+        subperiod_start_dates: vector<u64>,
+        subperiod_end_dates: vector<u64>,
         ctx: &mut TxContext
     ) {
         let buyer = tx_context::sender(ctx);
+
+        // Assertions for new parameters
+        let len = vector::length(&subperiod_ids);
+        assert!(vector::length(&subperiod_start_dates) == len, EMismatchLength);
+        assert!(vector::length(&subperiod_end_dates) == len, EMismatchLength);
 
         // 1. Create Whitelist for Seal access control
         let (wl_cap, mut wl) = whitelist::create_whitelist(ctx);
@@ -186,74 +188,26 @@ module contracts::earnout {
         // 3. Share Whitelist
         whitelist::share_whitelist(wl);
 
-        // 4. Create Deal with unset parameters
-        let deal = Deal {
+        // 4. Create Deal with all parameters set and locked
+        let mut deal = Deal {
             id: object::new(ctx),
             name,
             buyer,
             seller,
             auditor,
             start_date,
-            period_months: 0,
-            kpi_threshold: 0,
-            max_payout: 0,
+            period_months,
+            kpi_threshold,
+            max_payout,
             subperiods: vector::empty(),
             kpi_result: option::none(),
             is_settled: false,
             settled_amount: 0,
-            parameters_locked: false,
+            parameters_locked: true,
             whitelist_id: wl_id,
             whitelist_cap: wl_cap,
         };
 
-        event::emit(DealCreated {
-            deal_id: object::id(&deal),
-            whitelist_id: wl_id,
-            buyer,
-            start_date,
-        });
-
-        transfer::share_object(deal);
-    }
-
-    /// Set the earn-out parameters and create subperiods.
-    ///
-    /// This function:
-    /// 1. Sets the single period parameters (duration, KPI threshold, max payout)
-    /// 2. Creates the specified subperiods for document organization
-    /// 3. Locks parameters permanently
-    ///
-    /// Parameters:
-    /// - period_months: Total earn-out duration
-    /// - kpi_threshold: Cumulative KPI target
-    /// - max_payout: Payment if KPI is met
-    /// - subperiod_ids: IDs for each subperiod (e.g., ["2025-11", "2025-12", ...])
-    /// - subperiod_start_dates: Start timestamp for each subperiod
-    /// - subperiod_end_dates: End timestamp for each subperiod
-    public fun set_parameters(
-        deal: &mut Deal,
-        period_months: u64,
-        kpi_threshold: u64,
-        max_payout: u64,
-        subperiod_ids: vector<String>,
-        subperiod_start_dates: vector<u64>,
-        subperiod_end_dates: vector<u64>,
-        ctx: &mut TxContext
-    ) {
-        let sender = tx_context::sender(ctx);
-        assert!(sender == deal.buyer, ENotBuyer);
-        assert!(!deal.parameters_locked, EParametersLocked);
-
-        let len = vector::length(&subperiod_ids);
-        assert!(vector::length(&subperiod_start_dates) == len, EMismatchLength);
-        assert!(vector::length(&subperiod_end_dates) == len, EMismatchLength);
-
-        // Set period parameters
-        deal.period_months = period_months;
-        deal.kpi_threshold = kpi_threshold;
-        deal.max_payout = max_payout;
-
-        // Create subperiods
         let mut i = 0;
         while (i < len) {
             let subperiod = Subperiod {
@@ -266,17 +220,17 @@ module contracts::earnout {
             i = i + 1;
         };
 
-        // Lock parameters
-        deal.parameters_locked = true;
-
-        event::emit(ParametersLocked {
-            deal_id: object::id(deal),
-            period_months,
-            subperiod_count: len,
-            kpi_threshold,
-            max_payout,
+        event::emit(DealCreated {
+            deal_id: object::id(&deal),
+            whitelist_id: wl_id,
+            buyer,
+            start_date,
         });
+
+        transfer::share_object(deal);
     }
+
+
 
     public fun change_auditor(
         deal: &mut Deal,

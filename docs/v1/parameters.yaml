@@ -1,0 +1,134 @@
+paths:
+  /deals/{dealId}/parameters:
+    post:
+      summary: Set Earn-out Parameters
+      description: Configures the parameters for an earn-out deal, creates subperiods, and locks the configuration on-chain. This is a prerequisite for uploading Walrus blobs.
+      operationId: setDealParameters
+      tags:
+        - Deals
+      parameters:
+        - name: dealId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The ID of the deal to configure.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetParametersRequest"
+      responses:
+        "200":
+          description: Parameters set successfully. Returns unsigned transaction bytes for client-side signing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetParametersResponse"
+        "400":
+          $ref: "../schemas/errors.yaml#/components/responses/BadRequest"
+        "404":
+          $ref: "../schemas/errors.yaml#/components/responses/NotFound"
+        "500":
+          $ref: "../schemas/errors.yaml#/components/responses/InternalServerError"
+
+components:
+  schemas:
+    SetParametersRequest:
+      type: object
+      required:
+        - startDate
+        - endDate
+        - kpiThreshold
+        - maxPayout
+      properties:
+        startDate:
+          type: string
+          format: date
+          description: Start date of the first subperiod (YYYY-MM-DD)
+          example: "2025-11-01"
+        endDate:
+          type: string
+          format: date
+          description: End date of the last subperiod (YYYY-MM-DD)
+          example: "2026-10-31"
+        kpiThreshold:
+          type: integer
+          minimum: 0
+          description: Cumulative KPI target (in smallest unit)
+          example: 900000
+        maxPayout:
+          type: integer
+          minimum: 1
+          description: Maximum payout amount (in MIST for SUI)
+          example: 30000000
+    Subperiod:
+      type: object
+      properties:
+        id:
+          type: string
+          description: "A unique identifier for the subperiod, e.g., 'period_2025_11'"
+          example: "period_2025_11"
+        name:
+          type: string
+          description: "A human-readable name for the subperiod, e.g., 'November 2025'"
+          example: "November 2025"
+        startDate:
+          type: string
+          format: date
+          description: "The start date of the subperiod (YYYY-MM-DD)"
+          example: "2025-11-01"
+        endDate:
+          type: string
+          format: date
+          description: "The end date of the subperiod (YYYY-MM-DD)"
+          example: "2025-11-30"
+    SetParametersResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Parameters configured successfully"
+        parameters:
+          type: object
+          properties:
+            periodMonths:
+              type: integer
+              example: 12
+            kpiThreshold:
+              type: integer
+              example: 900000
+            maxPayout:
+              type: integer
+              example: 30000000
+            subperiods:
+              type: array
+              items:
+                $ref: "#/components/schemas/Subperiod"
+        transaction:
+          type: object
+          properties:
+            txBytes:
+              type: string
+              description: "Unsigned transaction bytes (hex-encoded)."
+              example: "..."
+            estimatedGas:
+              type: string
+              description: "Estimated gas fee in MIST."
+              example: "100000"
+        nextStep:
+          type: object
+          properties:
+            action:
+              type: string
+              example: "sign_transaction"
+            description:
+              type: string
+              example: "Please sign the transaction with your wallet to lock the parameters on-chain."
+            warning:
+              type: string
+              example: "Warning: Once parameters are locked, they cannot be changed."

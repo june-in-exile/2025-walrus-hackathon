@@ -130,13 +130,21 @@ class DashboardService {
       userRole,
     };
 
-    // Generate sub-periods automatically from start date
-    const generatedPeriods = generateSubPeriods(deal.startDate);
+    // Generate sub-periods automatically from start date and period_months
+    // If period_months is 0 or not set, use a default of 12 months to show all future periods
+    const periodMonths = deal.periodMonths && deal.periodMonths > 0 ? deal.periodMonths : 12;
+
+    console.log(`[Dashboard] Generating periods for deal ${dealId}:`);
+    console.log(`  - startDate: ${new Date(deal.startDate).toISOString()}`);
+    console.log(`  - period_months from chain: ${deal.periodMonths}`);
+    console.log(`  - using periodMonths: ${periodMonths}`);
+
+    const generatedPeriods = generateSubPeriods(deal.startDate, periodMonths);
 
     // Parse and merge with on-chain period data
     const periodsSummary = this.buildPeriodsSummary(
       generatedPeriods,
-      deal.periods,
+      deal.subperiods,
       userRole
     );
 

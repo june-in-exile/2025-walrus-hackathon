@@ -76,7 +76,7 @@ export interface BlobMetadata {
   dealId: string;
   periodId: string;
   encrypted: boolean;
-  encryptionMode: EncryptionMode;
+  encryptionMode?: EncryptionMode; // Optional: undefined for unencrypted uploads
   uploadedAt: string;
   uploaderAddress: string;
   dataType: DataType;
@@ -152,16 +152,22 @@ export interface WalrusUploadResponse {
     willBeCreated: boolean;
   };
   /** Next step for frontend to complete */
-  nextStep: {
-    action: 'register_on_chain';
-    description: string;
-    transaction: {
-      /** Unsigned transaction bytes */
-      txBytes: string;
-      /** Human-readable description */
-      description: string;
-    };
-  };
+  nextStep:
+    | {
+        action: 'register_on_chain';
+        description: string;
+        transaction: {
+          /** Unsigned transaction bytes */
+          txBytes: string;
+          /** Human-readable description */
+          description: string;
+        };
+      }
+    | {
+        action: 'create_deal';
+        description: string;
+        transaction: undefined;
+      };
 }
 
 /**

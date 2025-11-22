@@ -84,3 +84,5 @@ node_modules/
 
 # Sui Contracts
 /contracts/build/
+src/backend/contracts/build/
+src/backend/contracts/Move.lock

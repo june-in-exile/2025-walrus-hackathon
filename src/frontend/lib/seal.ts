@@ -58,18 +58,14 @@ export async function encryptData(
   packageId: string
 ): Promise<Uint8Array> {
   const sealClient = createSealClient(suiClient);
-  const packageIdHex = packageId.startsWith('0x') ? packageId.slice(2) : packageId;
   const dealIdHex = dealId.startsWith('0x') ? dealId.slice(2) : dealId;
   const dataToEncrypt = data instanceof Uint8Array ? data : new Uint8Array(data);
-
-  // Manually concatenate packageId + dealId to form the full key-id (64 bytes)
-  const fullKeyId = packageIdHex + dealIdHex;
 
   try {
     const { encryptedObject } = await sealClient.encrypt({
       threshold: 2,
       packageId: packageId,
-      id: fullKeyId, // Full key-id: packageId (32 bytes) + dealId (32 bytes)
+      id: dealIdHex,
       data: dataToEncrypt,
     });
 
@@ -108,65 +104,12 @@ export async function decryptData(
     const parsedEncryptedBlob = EncryptedObject.parse(dataToDecrypt);
     const encryptedKeyId = parsedEncryptedBlob.id;
 
-    // Verify key-id format
-    if (encryptedKeyId.length !== 128) {
-      throw new Error(
-        `Invalid key-id length: ${encryptedKeyId.length} (expected 128). ` +
-        'Please re-upload the file with the current contract.'
-      );
-    }
-
-    // Extract and verify packageId and dealId from key-id
-    const packageIdFromKeyId = '0x' + encryptedKeyId.substring(0, 64);
-    const dealIdFromKeyId = '0x' + encryptedKeyId.substring(64, 128);
-
-    if (packageIdFromKeyId !== packageId) {
-      throw new Error(
-        `Package ID mismatch. File encrypted with ${packageIdFromKeyId}, ` +
-        `but current contract is ${packageId}. Please re-upload.`
-      );
-    }
-
-    if (dealIdFromKeyId !== dealId) {
-      throw new Error(
-        `Deal ID mismatch. File encrypted for ${dealIdFromKeyId}, ` +
-        `but trying to decrypt for ${dealId}.`
-      );
-    }
-
-    // Verify user is a Deal participant
-    const dealObject = await suiClient.getObject({
-      id: dealId,
-      options: { showContent: true },
-    });
-
-    if (dealObject.data?.content?.dataType === 'moveObject') {
-      const fields = dealObject.data.content.fields as {
-        buyer: string;
-        seller: string;
-        auditor: string;
-        [key: string]: unknown;
-      };
-
-      const isParticipant =
-        userAddress === fields.buyer ||
-        userAddress === fields.seller ||
-        userAddress === fields.auditor;
-
-      if (!isParticipant) {
-        throw new Error(
-          `Access denied: You are not a participant in this Deal. ` +
-          `Only buyer, seller, or auditor can decrypt.`
-        );
-      }
-    }
-
     // Create session key and sign
     const sessionKey = await SessionKey.create({
       address: userAddress,
-      packageId: packageId,
+      packageId,
       ttlMin: 10,
-      suiClient: suiClient,
+      suiClient,
     });
 
     const personalMessage = sessionKey.getPersonalMessage();
@@ -175,20 +118,20 @@ export async function decryptData(
 
     // Build seal_approve transaction with dealId from key-id
     const tx = new Transaction();
-    tx.setSender(userAddress);
-
-    // Extract dealId bytes from key-id (last 32 bytes)
-    const dealIdBytesFromKeyId = fromHex(encryptedKeyId.substring(64, 128));
 
     tx.moveCall({
       target: `${packageId}::earnout::seal_approve`,
       arguments: [
-        tx.pure.vector('u8', Array.from(dealIdBytesFromKeyId)), // 32 bytes dealId
+        tx.pure.vector('u8', fromHex(encryptedKeyId)), // 32 bytes dealId
         tx.object(dealId),
       ],
     });
 
-    const txBytes = await tx.build({ client: suiClient });
+    // Build transaction kind (not executable PTB) for Seal Key Servers
+    const txBytes = await tx.build({
+      client: suiClient,
+      onlyTransactionKind: true,
+    });
 
     // Fetch decryption keys from Seal Key Servers
     await sealClient.fetchKeys({

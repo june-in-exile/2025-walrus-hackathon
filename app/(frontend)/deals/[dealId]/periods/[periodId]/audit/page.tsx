@@ -1,7 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useCurrentAccount } from '@mysten/dapp-kit';
+import { useCurrentAccount, useSuiClient, useSignPersonalMessage } from '@mysten/dapp-kit';
 import { useRole } from '@/src/frontend/contexts/RoleContext';
 import { useAuditRecords } from '@/src/frontend/hooks/useAuditRecords';
 import { useAuditData } from '@/src/frontend/hooks/useAuditData';
@@ -22,6 +23,7 @@ import {
   Shield,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { decryptData } from '@/src/frontend/lib/seal';
 import type { DealBlobItem } from '@/src/shared/types/walrus';
 
 export default function DataAuditPage() {
@@ -31,6 +33,10 @@ export default function DataAuditPage() {
   const { currentRole } = useRole();
   const dealId = params.dealId as string;
   const periodId = params.periodId as string;
+
+  const suiClient = useSuiClient();
+  const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
+  const [downloadingBlobId, setDownloadingBlobId] = useState<string | null>(null);
 
   // Fetch audit records
   const {
@@ -172,15 +178,67 @@ export default function DataAuditPage() {
     });
   };
 
-  const handleDownload = (record: DealBlobItem) => {
-    const url = `/api/v1/walrus/download/${record.blobId}`;
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = record.metadata.filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    toast.success(`Downloading ${record.metadata.filename}`);
+  const handleDownload = async (record: DealBlobItem) => {
+    if (!currentAccount?.address) {
+      toast.error('Please connect your wallet first');
+      return;
+    }
+
+    const filename = record.metadata?.filename || record.dataType || 'document';
+    setDownloadingBlobId(record.blobId);
+
+    try {
+      const message = new Date().toISOString();
+      const { signature } = await signPersonalMessage({
+        message: new TextEncoder().encode(message),
+      });
+
+      const response = await fetch(`/api/v1/walrus/download/${record.blobId}?dealId=${dealId}`, {
+        headers: {
+          'X-Sui-Address': currentAccount.address,
+          'X-Sui-Signature': signature,
+          'X-Sui-Signature-Message': message,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to download file');
+      }
+
+      const encryptedBuffer = await response.arrayBuffer();
+      const packageId = process.env.NEXT_PUBLIC_EARNOUT_PACKAGE_ID;
+
+      if (!packageId) {
+        throw new Error('Seal decryption is not configured');
+      }
+
+      const decryptedBuffer = await decryptData(
+        suiClient,
+        encryptedBuffer,
+        dealId,
+        packageId,
+        currentAccount.address,
+        signPersonalMessage
+      );
+
+      const blob = new Blob([new Uint8Array(decryptedBuffer)]);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      toast.success(`Downloaded ${filename}`);
+    } catch (error) {
+      console.error('Download failed:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to download file');
+    } finally {
+      setDownloadingBlobId(null);
+    }
   };
 
   return (
@@ -293,7 +351,9 @@ export default function DataAuditPage() {
                           )}
 
                           <div className="flex-1 min-w-0">
-                            <p className="font-medium truncate">{record.metadata.filename}</p>
+                            <p className="font-medium truncate">
+                              {record.metadata?.filename || record.dataType || 'Untitled Document'}
+                            </p>
                             <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1">
                               <span className="capitalize">{record.dataType.replace('_', ' ')}</span>
                               <span>{formatFileSize(record.size ?? 0)}</span>
@@ -315,8 +375,13 @@ export default function DataAuditPage() {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleDownload(record)}
+                            disabled={downloadingBlobId === record.blobId}
                           >
-                            <Download className="h-4 w-4" />
+                            {downloadingBlobId === record.blobId ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Download className="h-4 w-4" />
+                            )}
                           </Button>
 
                           {!isAudited && (

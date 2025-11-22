@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useCurrentAccount } from '@mysten/dapp-kit';
 import { useDashboard, usePendingActions } from '@/src/frontend/hooks/useDashboard';
@@ -9,7 +10,7 @@ import { WalletButton } from '@/src/frontend/components/wallet/WalletButton';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Wallet, ArrowLeft, AlertCircle, FileText } from 'lucide-react';
+import { Loader2, Wallet, ArrowLeft, AlertCircle, FileText, Copy, Check } from 'lucide-react';
 import Link from 'next/link';
 
 export default function DealDashboardPage() {
@@ -20,6 +21,17 @@ export default function DealDashboardPage() {
 
   const { data: dashboard, isLoading, error } = useDashboard(dealId);
   const pendingActions = usePendingActions(dealId);
+  const [copiedDealId, setCopiedDealId] = useState(false);
+
+  const handleCopyDealId = async () => {
+    try {
+      await navigator.clipboard.writeText(dealId);
+      setCopiedDealId(true);
+      setTimeout(() => setCopiedDealId(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy deal ID:', error);
+    }
+  };
 
   // If wallet not connected, show connect wallet prompt
   if (!currentAccount) {
@@ -120,9 +132,24 @@ export default function DealDashboardPage() {
                 <Badge variant="outline" className="capitalize">
                   {dealInfo.userRole}
                 </Badge>
-                <span className="text-sm text-muted-foreground">
-                  Deal ID: {dealInfo.dealId.slice(0, 8)}...{dealInfo.dealId.slice(-6)}
-                </span>
+                <div className="flex items-center gap-1">
+                  <span className="text-sm text-muted-foreground">
+                    Deal ID: {dealInfo.dealId.slice(0, 8)}...{dealInfo.dealId.slice(-6)}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleCopyDealId}
+                    className="h-5 w-5 p-0"
+                    title="Copy full Deal ID"
+                  >
+                    {copiedDealId ? (
+                      <Check className="h-3 w-3 text-green-500" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
+                  </Button>
+                </div>
               </div>
             </div>
 
@@ -137,30 +164,6 @@ export default function DealDashboardPage() {
               </Button>
             </div>
           </div>
-
-          {/* Pending Actions Alert */}
-          {pendingActions.length > 0 && (
-            <div className="mt-6">
-              <Card className="border-primary/50 bg-primary/5">
-                <CardContent className="pt-4 pb-4">
-                  <div className="flex items-start gap-3">
-                    <AlertCircle className="h-5 w-5 text-primary mt-0.5" />
-                    <div className="flex-1">
-                      <h3 className="font-semibold mb-2">Pending Actions</h3>
-                      <ul className="space-y-1 text-sm">
-                        {pendingActions.map((action, idx) => (
-                          <li key={idx}>
-                            <span className="font-medium">{action.periodName}:</span>{' '}
-                            {action.action}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
         </div>
       </section>
 

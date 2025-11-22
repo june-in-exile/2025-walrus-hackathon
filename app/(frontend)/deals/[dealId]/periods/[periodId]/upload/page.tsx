@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useCurrentAccount } from '@mysten/dapp-kit';
+import { useCurrentAccount, useSuiClient, useSignPersonalMessage } from '@mysten/dapp-kit';
 import { useRole } from '@/src/frontend/contexts/RoleContext';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { useDashboard } from '@/src/frontend/hooks/useDashboard';
 import { useWalrusUpload, type DataType } from '@/src/frontend/hooks/useWalrusUpload';
 import { usePeriodBlobs } from '@/src/frontend/hooks/usePeriodBlobs';
+import { decryptData } from '@/src/frontend/lib/seal';
 import { WalletButton } from '@/src/frontend/components/wallet/WalletButton';
 import { FileUploadZone } from '@/src/frontend/components/features/upload/FileUploadZone';
 import { RequestChangesModal } from '@/src/frontend/components/features/auditor/RequestChangesModal';
@@ -82,7 +83,10 @@ export default function DocumentsPage() {
   const { data: dashboard, isLoading } = useDashboard(dealId);
   const { upload: uploadToWalrus, isUploading } = useWalrusUpload();
   const { data: periodBlobsData, isLoading: isBlobsLoading } = usePeriodBlobs(dealId, periodId);
+  const suiClient = useSuiClient();
+  const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [downloadingBlobId, setDownloadingBlobId] = useState<string | null>(null);
   const [requestChangesModal, setRequestChangesModal] = useState<{
     open: boolean;
     blobId: string;
@@ -182,6 +186,68 @@ export default function DocumentsPage() {
         description: 'Please try again later.',
       });
       throw error;
+    }
+  };
+
+  const handleDownload = async (blobId: string, filename: string) => {
+    if (!currentAccount?.address) {
+      toast.error('Please connect your wallet first');
+      return;
+    }
+
+    setDownloadingBlobId(blobId);
+
+    try {
+      const message = new Date().toISOString();
+      const { signature } = await signPersonalMessage({
+        message: new TextEncoder().encode(message),
+      });
+
+      const response = await fetch(`/api/v1/walrus/download/${blobId}?dealId=${dealId}`, {
+        headers: {
+          'X-Sui-Address': currentAccount.address,
+          'X-Sui-Signature': signature,
+          'X-Sui-Signature-Message': message,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to download file');
+      }
+
+      const encryptedBuffer = await response.arrayBuffer();
+      const packageId = process.env.NEXT_PUBLIC_EARNOUT_PACKAGE_ID;
+
+      if (!packageId) {
+        throw new Error('Seal decryption is not configured');
+      }
+
+      const decryptedBuffer = await decryptData(
+        suiClient,
+        encryptedBuffer,
+        dealId,
+        packageId,
+        currentAccount.address,
+        signPersonalMessage
+      );
+
+      const blob = new Blob([new Uint8Array(decryptedBuffer)]);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      toast.success(`Downloaded ${filename}`);
+    } catch (error) {
+      console.error('Download failed:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to download file');
+    } finally {
+      setDownloadingBlobId(null);
     }
   };
 
@@ -524,18 +590,14 @@ export default function DocumentsPage() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => {
-                              const url = `/api/v1/walrus/download/${blob.blobId}`;
-                              const a = document.createElement('a');
-                              a.href = url;
-                              a.download = blob.dataType;
-                              document.body.appendChild(a);
-                              a.click();
-                              document.body.removeChild(a);
-                              toast.success(`Downloading ${blob.dataType}`);
-                            }}
+                            onClick={() => handleDownload(blob.blobId, blob.dataType)}
+                            disabled={downloadingBlobId === blob.blobId}
                           >
-                            <Download className="h-4 w-4" />
+                            {downloadingBlobId === blob.blobId ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Download className="h-4 w-4" />
+                            )}
                           </Button>
                         </div>
 

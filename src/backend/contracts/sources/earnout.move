@@ -13,14 +13,14 @@ module contracts::earnout {
     const EInvalidSignature: u64 = 2;
     const EAlreadyAudited: u64 = 3;
     const ENotAuthorized: u64 = 4;
-    const EMismatchLength: u64 = 6;
-    const EInvalidAttestation: u64 = 8;
-    const EKPIResultAlreadySubmitted: u64 = 9;
-    const ESubperiodNotFound: u64 = 10;
-    const EAlreadySettled: u64 = 11;
-    const EParametersNotSet: u64 = 12;
-    const EInsufficientPayment: u64 = 14;
-    const ENoSealAccess: u64 = 15;
+    const EMismatchLength: u64 = 5;
+    const EInvalidAttestation: u64 = 6;
+    const EKPIResultAlreadySubmitted: u64 = 7;
+    const ESubperiodNotFound: u64 = 8;
+    const EAlreadySettled: u64 = 9;
+    const EParametersNotSet: u64 = 10;
+    const EInsufficientPayment: u64 = 11;
+    const ENoSealAccess: u64 = 12;
 
     // --- Structs ---
 
@@ -104,8 +104,6 @@ module contracts::earnout {
         buyer: address,
         start_date: u64
     }
-
-
 
     public struct BlobAdded has copy, drop {
         deal_id: ID,

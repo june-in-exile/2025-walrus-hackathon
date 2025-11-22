@@ -1,0 +1,304 @@
+paths:
+  /deals/{dealId}/periods/{periodId}/kpi/propose:
+    post:
+      summary: Buyer proposes KPI value for a period
+      description: |
+        **Purpose**: Buyer submits calculated KPI result after period ends
+
+        **Business Logic**:
+        - Buyer calculates KPI from uploaded financial data
+        - System validates period has ended
+        - Formula from parameters used to calculate earn-out preview
+        - Creates on-chain KPI proposal
+        - Status changes to "proposed" (awaits auditor attestation)
+
+        **Sui Integration**:
+        - Writes: Calls `earnout::propose_kpi(deal, period, value)`
+        - Transaction: Returns unsigned transaction for buyer to sign
+        - Events: Emits `KPIProposed` event with dealId, periodId, value
+        - State: Period.kpiProposal updated with proposed value
+        - Gas: Estimated ~1,500,000 MIST
+
+        **Calculation Preview**:
+        - Backend pre-calculates earn-out amount using on-chain formula
+        - Shows buyer the projected payout BEFORE signing transaction
+        - Helps buyer verify KPI entry is correct
+
+        **Data References**:
+        - Buyer can reference supporting Walrus blob IDs
+        - These references are stored on-chain with the proposal
+        - Auditor can later verify against same blobs
+
+        **Access Control**:
+        - Role: Buyer only
+        - Verification: User address must match deal.buyer
+        - Timing: Period must have ended (endDate < now)
+        - Status: Period must not already have attested KPI
+      operationId: proposeKPI
+      tags:
+        - KPI Management
+      parameters:
+        - name: X-Sui-Address
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: '^0x[a-fA-F0-9]{64}$'
+          description: Buyer's Sui address
+        - name: X-Sui-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: dealId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^0x[a-fA-F0-9]{64}$'
+        - name: periodId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Period identifier
+          example: "period_2026"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/kpi.yaml#/components/schemas/ProposeKPIRequest'
+            example:
+              kpiType: "revenue"
+              value: 11300000
+              unit: "USD"
+              notes: "Based on audited financial statements for FY2026. Total revenue from Q1-Q4 revenue journals."
+              supportingBlobIds:
+                - "blob_2Nf8pQz3Xm7Yk5Rd9Wv1Bc6Lt4Hs"
+                - "blob_3Og9qRa4Yn8Zl6Se0Xw2Cd7Mu5It"
+                - "blob_4Ph0rSb5Zo9Am7Tf1Yx3De8Nv6Ju"
+                - "blob_5Qi1tTc6Ap0Bn8Ug2Zy4Ef9Ow7Kv"
+      responses:
+        '200':
+          description: KPI proposed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/kpi.yaml#/components/schemas/ProposeKPIResponse'
+              example:
+                proposal:
+                  kpiType: "revenue"
+                  value: 11300000
+                  unit: "USD"
+                  proposedBy: "0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+                  proposedAt: "2027-01-15T10:00:00Z"
+                  status: "pending"
+                  calculatedPayout: 2600000
+                  notes: "Based on audited financial statements"
+                  supportingBlobIds:
+                    - "blob_2Nf8pQz3Xm7Yk5Rd9Wv1Bc6Lt4Hs"
+                    - "blob_3Og9qRa4Yn8Zl6Se0Xw2Cd7Mu5It"
+                calculatedPayout:
+                  kpiValue: 11300000
+                  threshold: 10000000
+                  maxPayout: 5000000
+                  calculatedAmount: 2600000
+                  formula: "Linear: (11.3M - 10M) / (15M - 10M) * 5M = 1.3M / 5M * 5M = 2.6M"
+                transaction:
+                  txBytes: "AAACAAgA..."
+                  description: "Propose KPI: Revenue = $11,300,000"
+                  estimatedGas: 1500000
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/ValidationError'
+              examples:
+                periodNotEnded:
+                  value:
+                    error: "ValidationError"
+                    message: "Cannot propose KPI for active period"
+                    statusCode: 400
+                    details:
+                      periodEndDate: "2026-12-31"
+                      currentDate: "2026-11-15"
+                      reason: "Period must end before KPI can be proposed"
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/UnauthorizedError'
+        '403':
+          description: Forbidden - Only buyer can propose KPI
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/ForbiddenError'
+        '404':
+          description: Deal or period not found
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/NotFoundError'
+        '409':
+          description: Conflict - KPI already proposed or attested
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/ConflictError'
+
+  /deals/{dealId}/periods/{periodId}/kpi/attest:
+    post:
+      summary: Auditor attests/approves KPI value
+      description: |
+        **Purpose**: Auditor verifies and attests the buyer's proposed KPI
+
+        **Business Logic**:
+        - Auditor reviews buyer's KPI proposal
+        - Auditor decrypts and verifies supporting Walrus blobs using Seal
+        - Auditor independently calculates KPI from source documents
+        - If approved: Creates on-chain attestation with verified value
+        - If rejected: Records rejection reason, buyer must re-propose
+
+        **Audit Verification Flow**:
+        1. Auditor sees KPI proposal from buyer
+        2. Auditor downloads blob IDs referenced in proposal
+        3. Auditor requests decryption keys from Seal (role-based access)
+        4. Seal verifies auditor role via earnout_seal_policy on Sui
+        5. Auditor decrypts and reviews actual financial documents
+        6. Auditor verifies calculations match proposal
+        7. Auditor signs attestation transaction
+
+        **Sui Integration**:
+        - Writes: Calls `earnout::attest_kpi(deal, period, value, approved)`
+        - Transaction: Returns unsigned transaction for auditor to sign
+        - Events: Emits `KPIAttested` event with final verified value
+        - State: Period.kpiAttestation updated, status → "attested"
+        - Gas: Estimated ~1,800,000 MIST
+
+        **Seal Integration**:
+        - Access: Auditor role allows blob decryption
+        - Policy: earnout_seal_policy verifies auditor address on-chain
+        - Verification: Auditor can decrypt all buyer-uploaded blobs
+
+        **Settlement Trigger**:
+        - Once KPI is attested, period becomes eligible for settlement
+        - Buyer can then call settlement endpoint to execute payout
+
+        **Access Control**:
+        - Role: Auditor only
+        - Verification: User address must match deal.auditor
+        - Prerequisite: KPI must be proposed by buyer first
+      operationId: attestKPI
+      tags:
+        - KPI Management
+      parameters:
+        - name: X-Sui-Address
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: '^0x[a-fA-F0-9]{64}$'
+          description: Auditor's Sui address
+        - name: X-Sui-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: dealId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^0x[a-fA-F0-9]{64}$'
+        - name: periodId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "period_2026"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/kpi.yaml#/components/schemas/AttestKPIRequest'
+            examples:
+              approved:
+                summary: Approve KPI
+                value:
+                  kpiType: "revenue"
+                  value: 11300000
+                  approved: true
+                  notes: "Verified all revenue journals and supporting documents. Calculations are accurate. Revenue figure confirmed."
+                  verifiedBlobIds:
+                    - "blob_2Nf8pQz3Xm7Yk5Rd9Wv1Bc6Lt4Hs"
+                    - "blob_3Og9qRa4Yn8Zl6Se0Xw2Cd7Mu5It"
+                    - "blob_4Ph0rSb5Zo9Am7Tf1Yx3De8Nv6Ju"
+                    - "blob_5Qi1tTc6Ap0Bn8Ug2Zy4Ef9Ow7Kv"
+              rejected:
+                summary: Reject KPI
+                value:
+                  kpiType: "revenue"
+                  value: 11300000
+                  approved: false
+                  notes: "Discrepancy found in Q3 revenue calculations. Missing supporting documentation for $500K in reported revenue. Buyer must provide additional documentation."
+                  verifiedBlobIds:
+                    - "blob_2Nf8pQz3Xm7Yk5Rd9Wv1Bc6Lt4Hs"
+      responses:
+        '200':
+          description: KPI attestation recorded
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/kpi.yaml#/components/schemas/AttestKPIResponse'
+              example:
+                attestation:
+                  kpiType: "revenue"
+                  attestedValue: 11300000
+                  unit: "USD"
+                  attestedBy: "0x9876543210abcdef1234567890abcdef1234567890abcdef1234567890abcd"
+                  attestedAt: "2027-02-01T14:30:00Z"
+                  approved: true
+                  finalPayout: 2600000
+                  notes: "Verified against source documents. Revenue figure confirmed."
+                  verifiedBlobIds:
+                    - "blob_2Nf8pQz3Xm7Yk5Rd9Wv1Bc6Lt4Hs"
+                    - "blob_3Og9qRa4Yn8Zl6Se0Xw2Cd7Mu5It"
+                transaction:
+                  txBytes: "AAACAAgA..."
+                  description: "Attest KPI: Revenue = $11,300,000 (Approved)"
+                  estimatedGas: 1800000
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/ValidationError'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/UnauthorizedError'
+        '403':
+          description: Forbidden - Only auditor can attest
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/ForbiddenError'
+        '404':
+          description: Deal, period, or KPI proposal not found
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/NotFoundError'
+        '409':
+          description: Conflict - KPI already attested
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/ConflictError'

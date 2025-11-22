@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { FileText, Trash2, Download, Loader2 } from 'lucide-react';
+import { FileText, Trash2, Download, Loader2, Copy, Check } from 'lucide-react';
 import { useSuiClient, useCurrentAccount, useSignPersonalMessage } from '@mysten/dapp-kit';
 import { decryptData } from '@/src/frontend/lib/seal';
 
@@ -31,10 +31,21 @@ export function UploadedFilesList({
 }: UploadedFilesListProps) {
   const [downloadStatus, setDownloadStatus] = useState<Record<number, DownloadStatus>>({});
   const [downloadError, setDownloadError] = useState<Record<number, string | null>>({});
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
   const suiClient = useSuiClient();
   const currentAccount = useCurrentAccount();
   const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
+
+  const handleCopyBlobId = async (index: number, blobId: string) => {
+    try {
+      await navigator.clipboard.writeText(blobId);
+      setCopiedIndex(index);
+      setTimeout(() => setCopiedIndex(null), 2000);
+    } catch (error) {
+      console.error('Failed to copy blob ID:', error);
+    }
+  };
 
   const handleDownload = async (index: number, blobId: string, filename: string) => {
     if (!currentAccount?.address) {
@@ -197,6 +208,26 @@ export function UploadedFilesList({
                       <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                         {file.description}
                       </p>
+                    )}
+                    {file.blobId && (
+                      <div className="flex items-center gap-1 mt-1">
+                        <span className="text-xs text-muted-foreground font-mono">
+                          Blob ID: {file.blobId.slice(0, 8)}...{file.blobId.slice(-8)}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleCopyBlobId(index, file.blobId!)}
+                          className="h-5 w-5 p-0"
+                          title="Copy full Blob ID"
+                        >
+                          {copiedIndex === index ? (
+                            <Check className="h-3 w-3 text-green-500" />
+                          ) : (
+                            <Copy className="h-3 w-3" />
+                          )}
+                        </Button>
+                      </div>
                     )}
                     {downloadError[index] && (
                       <p className="text-xs text-destructive mt-1">

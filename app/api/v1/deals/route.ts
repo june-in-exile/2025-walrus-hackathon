@@ -113,9 +113,36 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body = await request.json();
-    const { name, sellerAddress, auditorAddress, buyerAddress } = body;
+    const {
+      agreementBlobId,
+      name,
+      sellerAddress,
+      auditorAddress,
+      startDateMs,
+      buyerAddress,
+      periodMonths,
+      kpiThreshold,
+      maxPayout,
+      headquarter,
+      assetIds,
+      assetUsefulLives,
+      subperiodIds,
+      subperiodStartDates,
+      subperiodEndDates,
+    } = body;
 
     // Validate required fields
+    if (!agreementBlobId || typeof agreementBlobId !== 'string' || agreementBlobId.trim().length === 0) {
+      return NextResponse.json(
+        {
+          error: 'ValidationError',
+          message: 'Agreement blob ID is required',
+          statusCode: 400,
+        },
+        { status: 400 }
+      );
+    }
+
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
       return NextResponse.json(
         {
@@ -125,6 +152,28 @@ export async function POST(request: NextRequest) {
         },
         { status: 400 }
       );
+    }
+
+    if (typeof periodMonths !== 'number' || periodMonths <= 0) {
+      return NextResponse.json({ error: 'ValidationError', message: 'periodMonths is required' }, { status: 400 });
+    }
+    if (typeof kpiThreshold !== 'number') {
+      return NextResponse.json({ error: 'ValidationError', message: 'kpiThreshold is required' }, { status: 400 });
+    }
+    if (typeof maxPayout !== 'number' || maxPayout <= 0) {
+      return NextResponse.json({ error: 'ValidationError', message: 'maxPayout is required' }, { status: 400 });
+    }
+    if (typeof headquarter !== 'number' || headquarter < 1 || headquarter > 100) {
+      return NextResponse.json({ error: 'ValidationError', message: 'headquarter must be between 1 and 100' }, { status: 400 });
+    }
+    if (!Array.isArray(assetIds) || assetIds.length === 0) {
+      return NextResponse.json({ error: 'ValidationError', message: 'assetIds are required' }, { status: 400 });
+    }
+    if (!Array.isArray(assetUsefulLives) || assetUsefulLives.length !== assetIds.length) {
+      return NextResponse.json({ error: 'ValidationError', message: 'assetUsefulLives must match assetIds length' }, { status: 400 });
+    }
+    if (!Array.isArray(subperiodIds)) {
+      return NextResponse.json({ error: 'ValidationError', message: 'subperiodIds are required' }, { status: 400 });
     }
 
     // Validate Sui address format
@@ -152,6 +201,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate startDateMs (required, number)
+    if (typeof startDateMs !== 'number' || isNaN(startDateMs) || startDateMs <= 0) {
+      return NextResponse.json(
+        {
+          error: 'ValidationError',
+          message: 'Start date in milliseconds (startDateMs) is required and must be a positive number',
+          statusCode: 400,
+        },
+        { status: 400 }
+      );
+    }
+
     // Buyer address should match the authenticated user
     const effectiveBuyerAddress = buyerAddress || userAddress;
     if (effectiveBuyerAddress !== userAddress) {
@@ -167,9 +228,20 @@ export async function POST(request: NextRequest) {
 
     // Build the create_deal transaction
     const { txBytes, estimatedGas } = await suiService.buildCreateDealTransaction(
+      agreementBlobId.trim(),
       name.trim(),
       sellerAddress,
       auditorAddress,
+      startDateMs,
+      periodMonths,
+      kpiThreshold,
+      maxPayout,
+      headquarter,
+      assetIds,
+      assetUsefulLives,
+      subperiodIds,
+      subperiodStartDates,
+      subperiodEndDates,
       effectiveBuyerAddress
     );
 

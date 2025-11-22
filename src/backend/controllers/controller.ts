@@ -25,7 +25,7 @@ import type {
   ListDealBlobsQuery,
   DealBlobItem,
 } from '@/src/shared/types/walrus';
-import type { WhitelistEncryptionConfig } from '@/src/backend/services/seal-service';
+import type { DealEncryptionConfig } from '@/src/backend/services/seal-service';
 
 /**
  * Walrus Controller for file operations
@@ -54,7 +54,6 @@ export class WalrusController {
     blobId: string,
     periodId: string,
     dataType: string,
-    size: number,
     uploaderAddress: string
   ): Promise<{ txBytes: string; includesAuditRecord: boolean }> {
     // Check if earnout package is configured
@@ -64,33 +63,37 @@ export class WalrusController {
     }
 
     try {
+      // Verify deal parameters are locked before proceeding
+      const deal = await suiService.getDeal(dealId);
+      if (!deal) {
+        throw new Error(`Deal with ID ${dealId} not found.`);
+      }
+      if (!deal.parametersLocked) {
+        throw new Error('Deal parameters have not been set. Please complete deal setup before uploading documents.');
+      }
+
       const tx = new Transaction();
 
       // Get the shared Clock object (0x6 is the standard Sui Clock object ID)
       const clock = tx.object('0x6');
 
-      // Call the add_walrus_blob function on the earnout module
+      // Call the add_walrus_blob function on the earnout module                          
       // This function automatically creates a DataAuditRecord via create_audit_record_internal
-      //
-      // Contract function signature:
-      // public fun add_walrus_blob(
-      //   deal: &mut Deal,
-      //   period_index: u64,
-      //   blob_id: String,
-      //   data_type: String,
-      //   clock: &Clock,
-      //   ctx: &mut TxContext
-      // )
-      //
-      // Note: period_index is the numeric index in the Deal's periods vector
-      // We need to parse it from periodId (e.g., "Q1-2024" -> 0)
-      const periodIndex = parseInt(periodId.replace(/\D/g, ''), 10) || 0;
-
+      //                                                                                  
+      // Contract function signature:                                                     
+      // public fun add_walrus_blob(                                                      
+      //   deal: &mut Deal,                                                               
+      //   subperiod_id: String,                                                          
+      //   blob_id: String,                                                               
+      //   data_type: String,                                                             
+      //   clock: &Clock,                                                                 
+      //   ctx: &mut TxContext                                                            
+      // )                                                                                
       tx.moveCall({
         target: `${config.earnout.packageId}::earnout::add_walrus_blob`,
         arguments: [
           tx.object(dealId),
-          tx.pure.u64(periodIndex),
+          tx.pure.string(periodId), // Pass the string ID directly                        
           tx.pure.string(blobId),
           tx.pure.string(dataType),
           clock,
@@ -109,7 +112,7 @@ export class WalrusController {
       return { txBytes: toHex(txBytes), includesAuditRecord: true };
     } catch (error) {
       console.error('Failed to build register blob transaction:', error);
-      return { txBytes: '', includesAuditRecord: false };
+      throw error; // Re-throw the error to be caught by the calling handler
     }
   }
 
@@ -204,6 +207,9 @@ export class WalrusController {
         );
       }
 
+      // Check if this is a pre-deal upload (e.g., M&A agreement before deal creation)
+      const isPendingDeal = dealId === 'pending' || dealId === 'null';
+
       // Prepare blob metadata
       const metadata: BlobMetadata = {
         filename: filename || file.name,
@@ -211,18 +217,24 @@ export class WalrusController {
         description: description || undefined,
         dealId,
         periodId,
-        encrypted: true,
-        encryptionMode: mode,
+        encrypted: !isPendingDeal, // Don't encrypt pending deals (e.g., M&A agreements)
+        encryptionMode: isPendingDeal ? undefined : mode,
         uploadedAt: new Date().toISOString(),
         uploaderAddress: userAddress,
         dataType: dataType as DataType,
         customDataType: customDataType || undefined,
       };
-      // Process based on encryption mode
+
+      // Process based on encryption mode and deal status
       let dataToUpload: Buffer;
 
-      if (mode === 'server_encrypted') {
-        // Server-side encryption mode
+      if (isPendingDeal) {
+        // Pending deal: Upload plaintext (no encryption needed for M&A agreement)
+        dataToUpload = fileBuffer;
+        console.log('Pending deal upload: No encryption applied');
+        console.log('File size:', dataToUpload.length, 'bytes');
+      } else if (mode === 'server_encrypted') {
+        // Server-side encryption mode (for existing deals only)
         if (!config.app.enableServerEncryption) {
           return NextResponse.json(
             {
@@ -235,24 +247,24 @@ export class WalrusController {
         }
 
         // Validate required config
-        if (!config.seal.policyObjectId || !config.seal.packageId) {
+        if (!config.earnout.packageId) {
           return NextResponse.json(
             {
               error: 'ConfigurationError',
               message: 'Seal configuration is incomplete',
               statusCode: 500,
               details: {
-                reason: 'SEAL_POLICY_OBJECT_ID and SEAL_PACKAGE_ID must be set for server-side encryption',
+                reason: 'EARNOUT_PACKAGE_ID must be set for server-side encryption',
               },
             },
             { status: 500 }
           );
         }
 
-        // Encrypt file using Seal with whitelist-based access control
-        const encryptionConfig: WhitelistEncryptionConfig = {
-          whitelistObjectId: config.seal.policyObjectId,
-          packageId: config.seal.packageId,
+        // Encrypt file using Seal with Deal-based access control
+        const encryptionConfig: DealEncryptionConfig = {
+          dealId,
+          packageId: config.earnout.packageId,
         };
 
         const encryptionResult = await sealService.encrypt(fileBuffer, encryptionConfig);
@@ -273,14 +285,21 @@ export class WalrusController {
       const uploadResult = await walrusService.upload(dataToUpload, metadata);
 
       // Build transaction bytes for on-chain registration (includes audit record creation)
-      const { txBytes, includesAuditRecord } = await this.buildRegisterBlobTxBytes(
-        dealId,
-        uploadResult.blobId,
-        periodId,
-        dataType,
-        uploadResult.size,
-        userAddress
-      );
+      // Skip for pending deals (will be registered later when deal is created)
+      let txBytes = '';
+      let includesAuditRecord = false;
+
+      if (!isPendingDeal) {
+        const result = await this.buildRegisterBlobTxBytes(
+          dealId,
+          uploadResult.blobId,
+          periodId,
+          dataType,
+          userAddress
+        );
+        txBytes = result.txBytes;
+        includesAuditRecord = result.includesAuditRecord;
+      }
 
       // Build response
       const response: WalrusUploadResponse = {
@@ -301,18 +320,24 @@ export class WalrusController {
           // auditRecordId will be available after transaction execution
           // Frontend should extract it from transaction effects
         },
-        nextStep: {
-          action: 'register_on_chain',
-          description: includesAuditRecord
-            ? 'Sign transaction to register this blob and create audit record on-chain'
-            : 'Sign transaction to register this blob on-chain',
-          transaction: {
-            txBytes,
-            description: includesAuditRecord
-              ? `Register Walrus blob and create audit record: ${dataType} for ${periodId}`
-              : `Register Walrus blob: ${dataType} for ${periodId}`,
-          },
-        },
+        nextStep: isPendingDeal
+          ? {
+              action: 'create_deal',
+              description: 'This blob will be registered when you create the deal with this agreementBlobId',
+              transaction: undefined,
+            }
+          : {
+              action: 'register_on_chain',
+              description: includesAuditRecord
+                ? 'Sign transaction to register this blob and create audit record on-chain'
+                : 'Sign transaction to register this blob on-chain',
+              transaction: {
+                txBytes,
+                description: includesAuditRecord
+                  ? `Register Walrus blob and create audit record: ${dataType} for ${periodId}`
+                  : `Register Walrus blob: ${dataType} for ${periodId}`,
+              },
+            },
       };
 
       return NextResponse.json(response, { status: 200 });
@@ -426,7 +451,7 @@ export class WalrusController {
         'Content-Type': blobMetadata.mimeType || 'application/octet-stream',
         'Content-Length': dataToReturn.length.toString(),
         'X-Blob-Id': blobId,
-        'X-Original-Encryption-Mode': blobMetadata.encryptionMode, // How it was encrypted during upload
+        'X-Original-Encryption-Mode': blobMetadata.encryptionMode || 'none', // How it was encrypted during upload
         'X-Data-Type': blobMetadata.dataType,
         'X-Period-Id': blobMetadata.periodId,
         'X-Uploaded-At': blobMetadata.uploadedAt,
@@ -435,8 +460,8 @@ export class WalrusController {
 
       // Add Seal policy information for client-side decryption
       // Frontend needs these to decrypt using Seal SDK
-      if (config.seal.packageId) {
-        headers['X-Seal-Package-Id'] = config.seal.packageId;
+      if (config.earnout.packageId) {
+        headers['X-Seal-Package-Id'] = config.earnout.packageId;
         headers['X-Seal-Whitelist-Id'] = whitelistObjectId; // dealId
       }
 
@@ -572,8 +597,8 @@ export class WalrusController {
           page: query.page || 1,
           limit: query.limit || 50,
           totalPages: 0,
-          sealPolicy: config.seal.packageId ? {
-            packageId: config.seal.packageId,
+          sealPolicy: config.earnout.packageId ? {
+            packageId: config.earnout.packageId,
             whitelistObjectId: dealId,
           } : undefined,
         } as DealBlobsListResponse, { status: 200 });
@@ -662,8 +687,8 @@ export class WalrusController {
         page,
         limit,
         totalPages,
-        sealPolicy: config.seal.packageId ? {
-          packageId: config.seal.packageId,
+        sealPolicy: config.earnout.packageId ? {
+          packageId: config.earnout.packageId,
           whitelistObjectId: dealId,
         } : undefined,
       };

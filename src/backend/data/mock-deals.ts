@@ -926,7 +926,7 @@ export const mockDeals: DealWithExtendedFields[] = [
     earnoutPeriodYears: 3,
     kpiTargetAmount: 900000,
     contingentConsiderationAmount: 30000000,
-    headquarterExpenseAllocationPercentage: 0.10,
+    headquarterExpenseAllocationPercentage: 10,
     periods: mockPeriodsWithKPI,
     metadata: {
       industry: 'Technology',
@@ -951,7 +951,7 @@ export const mockDeals: DealWithExtendedFields[] = [
     earnoutPeriodYears: 3,
     kpiTargetAmount: 900000,
     contingentConsiderationAmount: 30000000,
-    headquarterExpenseAllocationPercentage: 0.10,
+    headquarterExpenseAllocationPercentage: 10,
     periods: mockPeriodsWithKPI_Deal2,
     metadata: {
       industry: 'Technology',

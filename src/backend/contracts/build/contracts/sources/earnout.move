@@ -24,6 +24,12 @@ module contracts::earnout {
 
     // --- Structs ---
 
+    /// Asset struct representing a fixed asset in the deal
+    public struct Asset has store, copy, drop {
+        asset_id: String,             // Asset identifier (e.g., "MACH-001A")
+        useful_life_months: u64,      // Estimated useful life in months
+    }
+
     /// Main Deal struct representing an M&A earn-out agreement
     ///
     /// Design: A Deal has ONE continuous earn-out period with cumulative KPI tracking.
@@ -33,18 +39,17 @@ module contracts::earnout {
     /// are used directly for Seal encryption access control via the seal_approve function.
     public struct Deal has key, store {
         id: UID,
+        agreement_blob_id: String,    // Walrus blob ID for encrypted M&A agreement
         name: String,
         buyer: address,
         seller: address,
         auditor: address,
         start_date: u64,              // Unix timestamp (ms) when earn-out begins
-        original_cost: u64,           // Original acquisition cost
-        estimated_useful_life_months: u64, // Estimated useful life in months
-
-        // Single period parameters
         period_months: u64,           // Total earn-out duration in months
         kpi_threshold: u64,           // Cumulative KPI target to trigger payout
         max_payout: u64,              // Maximum earn-out payment amount
+        headquarter: u64,             // Headquarter expense allocation percentage (1-100)
+        assets: vector<Asset>,        // Fixed assets included in this deal
 
         // Subperiods for document organization
         subperiods: vector<Subperiod>,
@@ -159,15 +164,17 @@ module contracts::earnout {
     - No separate Whitelist object needed
     */
     public fun create_deal(
+        agreement_blob_id: String,
         name: String,
         seller: address,
         auditor: address,
         start_date: u64,
-        original_cost: u64,
-        estimated_useful_life_months: u64,
         period_months: u64,
         kpi_threshold: u64,
         max_payout: u64,
+        headquarter: u64,
+        asset_ids: vector<String>,
+        asset_useful_lives: vector<u64>,
         subperiod_ids: vector<String>,
         subperiod_start_dates: vector<u64>,
         subperiod_end_dates: vector<u64>,
@@ -180,19 +187,36 @@ module contracts::earnout {
         assert!(vector::length(&subperiod_start_dates) == len, EMismatchLength);
         assert!(vector::length(&subperiod_end_dates) == len, EMismatchLength);
 
+        // Validate asset parameters
+        let asset_len = vector::length(&asset_ids);
+        assert!(vector::length(&asset_useful_lives) == asset_len, EMismatchLength);
+
+        // Create assets vector
+        let mut assets = vector::empty<Asset>();
+        let mut i = 0;
+        while (i < asset_len) {
+            let asset = Asset {
+                asset_id: *vector::borrow(&asset_ids, i),
+                useful_life_months: *vector::borrow(&asset_useful_lives, i),
+            };
+            vector::push_back(&mut assets, asset);
+            i = i + 1;
+        };
+
         // Create Deal with all parameters set and locked
         let mut deal = Deal {
             id: object::new(ctx),
+            agreement_blob_id,
             name,
             buyer,
             seller,
             auditor,
             start_date,
-            original_cost,
-            estimated_useful_life_months,
             period_months,
             kpi_threshold,
             max_payout,
+            headquarter,
+            assets,
             subperiods: vector::empty(),
             kpi_result: option::none(),
             is_settled: false,
@@ -201,7 +225,7 @@ module contracts::earnout {
         };
 
         // Create subperiods
-        let mut i = 0;
+        i = 0;
         while (i < len) {
             let subperiod = Subperiod {
                 id: *vector::borrow(&subperiod_ids, i),
@@ -541,15 +565,20 @@ module contracts::earnout {
     // --- Accessor Functions ---
 
     // Deal accessors
+    public fun deal_agreement_blob_id(deal: &Deal): String { deal.agreement_blob_id }
     public fun deal_start_date(deal: &Deal): u64 { deal.start_date }
-    public fun deal_original_cost(deal: &Deal): u64 { deal.original_cost }
-    public fun deal_estimated_useful_life_months(deal: &Deal): u64 { deal.estimated_useful_life_months }
     public fun deal_period_months(deal: &Deal): u64 { deal.period_months }
     public fun deal_kpi_threshold(deal: &Deal): u64 { deal.kpi_threshold }
     public fun deal_max_payout(deal: &Deal): u64 { deal.max_payout }
+    public fun deal_headquarter(deal: &Deal): u64 { deal.headquarter }
+    public fun deal_assets(deal: &Deal): &vector<Asset> { &deal.assets }
     public fun deal_is_settled(deal: &Deal): bool { deal.is_settled }
     public fun deal_settled_amount(deal: &Deal): u64 { deal.settled_amount }
     public fun deal_subperiod_count(deal: &Deal): u64 { vector::length(&deal.subperiods) }
+
+    // Asset accessors
+    public fun asset_id(asset: &Asset): String { asset.asset_id }
+    public fun asset_useful_life_months(asset: &Asset): u64 { asset.useful_life_months }
 
     // DataAuditRecord accessors
     public fun audit_record_is_audited(record: &DataAuditRecord): bool { record.audited }

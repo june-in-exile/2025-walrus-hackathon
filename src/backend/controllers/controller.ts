@@ -208,6 +208,9 @@ export class WalrusController {
         );
       }
 
+      // Check if this is a pre-deal upload (e.g., M&A agreement before deal creation)
+      const isPendingDeal = dealId === 'pending' || dealId === 'null';
+
       // Prepare blob metadata
       const metadata: BlobMetadata = {
         filename: filename || file.name,
@@ -215,18 +218,24 @@ export class WalrusController {
         description: description || undefined,
         dealId,
         periodId,
-        encrypted: true,
-        encryptionMode: mode,
+        encrypted: !isPendingDeal, // Don't encrypt pending deals (e.g., M&A agreements)
+        encryptionMode: isPendingDeal ? undefined : mode,
         uploadedAt: new Date().toISOString(),
         uploaderAddress: userAddress,
         dataType: dataType as DataType,
         customDataType: customDataType || undefined,
       };
-      // Process based on encryption mode
+
+      // Process based on encryption mode and deal status
       let dataToUpload: Buffer;
 
-      if (mode === 'server_encrypted') {
-        // Server-side encryption mode
+      if (isPendingDeal) {
+        // Pending deal: Upload plaintext (no encryption needed for M&A agreement)
+        dataToUpload = fileBuffer;
+        console.log('Pending deal upload: No encryption applied');
+        console.log('File size:', dataToUpload.length, 'bytes');
+      } else if (mode === 'server_encrypted') {
+        // Server-side encryption mode (for existing deals only)
         if (!config.app.enableServerEncryption) {
           return NextResponse.json(
             {
@@ -277,14 +286,22 @@ export class WalrusController {
       const uploadResult = await walrusService.upload(dataToUpload, metadata);
 
       // Build transaction bytes for on-chain registration (includes audit record creation)
-      const { txBytes, includesAuditRecord } = await this.buildRegisterBlobTxBytes(
-        dealId,
-        uploadResult.blobId,
-        periodId,
-        dataType,
-        uploadResult.size,
-        userAddress
-      );
+      // Skip for pending deals (will be registered later when deal is created)
+      let txBytes = '';
+      let includesAuditRecord = false;
+
+      if (!isPendingDeal) {
+        const result = await this.buildRegisterBlobTxBytes(
+          dealId,
+          uploadResult.blobId,
+          periodId,
+          dataType,
+          uploadResult.size,
+          userAddress
+        );
+        txBytes = result.txBytes;
+        includesAuditRecord = result.includesAuditRecord;
+      }
 
       // Build response
       const response: WalrusUploadResponse = {
@@ -305,18 +322,24 @@ export class WalrusController {
           // auditRecordId will be available after transaction execution
           // Frontend should extract it from transaction effects
         },
-        nextStep: {
-          action: 'register_on_chain',
-          description: includesAuditRecord
-            ? 'Sign transaction to register this blob and create audit record on-chain'
-            : 'Sign transaction to register this blob on-chain',
-          transaction: {
-            txBytes,
-            description: includesAuditRecord
-              ? `Register Walrus blob and create audit record: ${dataType} for ${periodId}`
-              : `Register Walrus blob: ${dataType} for ${periodId}`,
-          },
-        },
+        nextStep: isPendingDeal
+          ? {
+              action: 'create_deal',
+              description: 'This blob will be registered when you create the deal with this agreementBlobId',
+              transaction: undefined,
+            }
+          : {
+              action: 'register_on_chain',
+              description: includesAuditRecord
+                ? 'Sign transaction to register this blob and create audit record on-chain'
+                : 'Sign transaction to register this blob on-chain',
+              transaction: {
+                txBytes,
+                description: includesAuditRecord
+                  ? `Register Walrus blob and create audit record: ${dataType} for ${periodId}`
+                  : `Register Walrus blob: ${dataType} for ${periodId}`,
+              },
+            },
       };
 
       return NextResponse.json(response, { status: 200 });
@@ -430,7 +453,7 @@ export class WalrusController {
         'Content-Type': blobMetadata.mimeType || 'application/octet-stream',
         'Content-Length': dataToReturn.length.toString(),
         'X-Blob-Id': blobId,
-        'X-Original-Encryption-Mode': blobMetadata.encryptionMode, // How it was encrypted during upload
+        'X-Original-Encryption-Mode': blobMetadata.encryptionMode || 'none', // How it was encrypted during upload
         'X-Data-Type': blobMetadata.dataType,
         'X-Period-Id': blobMetadata.periodId,
         'X-Uploaded-At': blobMetadata.uploadedAt,

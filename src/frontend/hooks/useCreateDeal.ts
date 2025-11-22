@@ -50,6 +50,7 @@ function setPersistedSignatureCache(cache: SignatureCache): void {
 }
 
 interface CreateDealOptions {
+  agreementBlobId: string;
   name: string;
   sellerAddress: string;
   auditorAddress: string;
@@ -57,6 +58,9 @@ interface CreateDealOptions {
   periodMonths: number;
   kpiThreshold: number;
   maxPayout: number;
+  headquarter: number;
+  assetIds: string[];
+  assetUsefulLives: number[];
   subperiodIds: string[];
   subperiodStartDates: number[];
   subperiodEndDates: number[];
@@ -81,6 +85,7 @@ export function useCreateDeal(): UseCreateDealReturn {
   const createDeal = useCallback(
     async (options: CreateDealOptions) => {
       const {
+        agreementBlobId,
         name,
         sellerAddress,
         auditorAddress,
@@ -88,6 +93,9 @@ export function useCreateDeal(): UseCreateDealReturn {
         periodMonths,
         kpiThreshold,
         maxPayout,
+        headquarter,
+        assetIds,
+        assetUsefulLives,
         subperiodIds,
         subperiodStartDates,
         subperiodEndDates,
@@ -151,6 +159,7 @@ export function useCreateDeal(): UseCreateDealReturn {
             'X-Sui-Signature-Message': timestamp,
           },
           body: JSON.stringify({
+            agreementBlobId,
             name,
             sellerAddress,
             auditorAddress,
@@ -158,6 +167,9 @@ export function useCreateDeal(): UseCreateDealReturn {
             periodMonths,
             kpiThreshold,
             maxPayout,
+            headquarter,
+            assetIds,
+            assetUsefulLives,
             subperiodIds,
             subperiodStartDates,
             subperiodEndDates,

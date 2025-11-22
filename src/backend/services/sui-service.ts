@@ -551,17 +551,30 @@ export class SuiService {
    * Build unsigned transaction for creating a new deal
    *
    * Creates a Deal object on-chain with:
-   * - Deal name
+   * - Deal name and encrypted M&A agreement blob ID
    * - Buyer (sender), Seller, and Auditor addresses
-   * - Associated Whitelist for Seal encryption access control
+   * - Financial parameters (KPI threshold, max payout, headquarter allocation)
+   * - Assets with useful life for depreciation calculation
    *
+   * @param agreementBlobId - Walrus blob ID for encrypted M&A agreement
    * @param name - Deal name
    * @param sellerAddress - Seller's Sui address
    * @param auditorAddress - Auditor's Sui address
+   * @param startDateMs - Start date in milliseconds
+   * @param periodMonths - Earn-out period duration in months
+   * @param kpiThreshold - KPI target threshold
+   * @param maxPayout - Maximum payout amount
+   * @param headquarter - Headquarter expense allocation percentage (1-100)
+   * @param assetIds - Array of asset IDs
+   * @param assetUsefulLives - Array of asset useful lives in months
+   * @param subperiodIds - Array of subperiod identifiers
+   * @param subperiodStartDates - Array of subperiod start timestamps
+   * @param subperiodEndDates - Array of subperiod end timestamps
    * @param buyerAddress - Buyer's Sui address (transaction sender)
    * @returns Object with hex-encoded transaction bytes and estimated gas
    */
   async buildCreateDealTransaction(
+    agreementBlobId: string,
     name: string,
     sellerAddress: string,
     auditorAddress: string,
@@ -569,6 +582,9 @@ export class SuiService {
     periodMonths: number,
     kpiThreshold: number,
     maxPayout: number,
+    headquarter: number,
+    assetIds: string[],
+    assetUsefulLives: number[],
     subperiodIds: string[],
     subperiodStartDates: number[],
     subperiodEndDates: number[],
@@ -582,6 +598,7 @@ export class SuiService {
       if (debugConfig.sui) {
         console.log('Building create_deal transaction');
         console.log('Package ID:', config.earnout.packageId);
+        console.log('Agreement Blob ID:', agreementBlobId);
         console.log('Name:', name);
         console.log('Buyer:', buyerAddress);
         console.log('Seller:', sellerAddress);
@@ -590,6 +607,9 @@ export class SuiService {
         console.log('Period Months:', periodMonths);
         console.log('KPI Threshold:', kpiThreshold);
         console.log('Max Payout:', maxPayout);
+        console.log('Headquarter:', headquarter);
+        console.log('Asset IDs:', assetIds);
+        console.log('Asset Useful Lives:', assetUsefulLives);
         console.log('Subperiod IDs:', subperiodIds);
         console.log('Subperiod Start Dates:', subperiodStartDates);
         console.log('Subperiod End Dates:', subperiodEndDates);
@@ -600,37 +620,37 @@ export class SuiService {
       // Call earnout::create_deal
       // Function signature from Move:
       // public fun create_deal(
+      //   agreement_blob_id: String,
       //   name: String,
       //   seller: address,
       //   auditor: address,
       //   start_date: u64,
-      //   original_cost: u64,
-      //   estimated_useful_life_months: u64,
       //   period_months: u64,
       //   kpi_threshold: u64,
       //   max_payout: u64,
+      //   headquarter: u64,
+      //   asset_ids: vector<String>,
+      //   asset_useful_lives: vector<u64>,
       //   subperiod_ids: vector<String>,
       //   subperiod_start_dates: vector<u64>,
       //   subperiod_end_dates: vector<u64>,
       //   ctx: &mut TxContext
       // )
 
-      // Default values for new accounting fields (can be updated later via API)
-      const originalCost = 0; // Default: no original cost
-      const estimatedUsefulLifeMonths = 12; // Default: 1 year
-
       tx.moveCall({
         target: `${config.earnout.packageId}::earnout::create_deal`,
         arguments: [
+          tx.pure.string(agreementBlobId),
           tx.pure.string(name),
           tx.pure.address(sellerAddress),
           tx.pure.address(auditorAddress),
           tx.pure.u64(startDateMs),
-          tx.pure.u64(originalCost), // New parameter
-          tx.pure.u64(estimatedUsefulLifeMonths), // New parameter
           tx.pure.u64(periodMonths),
           tx.pure.u64(kpiThreshold),
           tx.pure.u64(maxPayout),
+          tx.pure.u64(headquarter),
+          tx.pure.vector('string', assetIds),
+          tx.pure.vector('u64', assetUsefulLives),
           tx.pure.vector('string', subperiodIds),
           tx.pure.vector('u64', subperiodStartDates),
           tx.pure.vector('u64', subperiodEndDates),

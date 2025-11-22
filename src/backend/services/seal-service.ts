@@ -2,11 +2,15 @@
  * Seal Encryption Service
  *
  * Handles server-side encryption and decryption using @mysten/seal SDK.
- * Integrates with the whitelist.move contract for access control.
+ * Integrates with the earnout.move contract for Deal-based access control.
  *
- * Key-ID Format: [whitelist object id][nonce]
- * - whitelist object id: 32 bytes (Sui object ID)
- * - nonce: arbitrary bytes (e.g., deal ID + timestamp)
+ * Key-ID Format: [packageId][dealId]
+ * - packageId: 32 bytes (Sui package ID where earnout module is deployed)
+ * - dealId: 32 bytes (Sui object ID of the Deal)
+ *
+ * Access Control: Only the buyer, seller, or auditor of a Deal can decrypt
+ * data encrypted with that Deal's ID. This is enforced by the seal_approve
+ * function in earnout.move (line 529).
  */
 
 import { SealClient, SessionKey, EncryptedObject } from '@mysten/seal';
@@ -23,20 +27,20 @@ import type {
 } from '@/src/shared/types/walrus';
 
 /**
- * Configuration for whitelist-based encryption
+ * Configuration for Deal-based encryption
  */
-export interface WhitelistEncryptionConfig {
-  /** Whitelist object ID on Sui (controls who can decrypt) */
-  whitelistObjectId: string;
-  /** Package ID where whitelist module is deployed */
+export interface DealEncryptionConfig {
+  /** Deal object ID on Sui (controls who can decrypt via buyer/seller/auditor roles) */
+  dealId: string;
+  /** Package ID where earnout module is deployed */
   packageId: string;
 }
 
 /**
  * Seal Service for server-side encryption/decryption
  *
- * Integrates with contracts::whitelist Move contract for access control.
- * Only addresses added to a Whitelist can decrypt data encrypted with that whitelist's key-id.
+ * Integrates with contracts::earnout Move contract for access control.
+ * Only the buyer, seller, or auditor of a Deal can decrypt data encrypted with that Deal's ID.
  */
 export class SealService {
   private sealClient: SealClient;
@@ -82,7 +86,7 @@ export class SealService {
     if (debugConfig.seal) {
       console.log('SealService initialized');
       console.log('Key Server Config:', this.getKeyServerConfigs());
-      console.log('Policy Object ID:', config.seal.policyObjectId);
+      console.log('Backend address:', this.backendKeypair?.toSuiAddress() || 'not configured');
     }
   }
 
@@ -114,15 +118,15 @@ export class SealService {
   }
 
   /**
-   * Encrypt file data using Seal with whitelist-based access control
+   * Encrypt file data using Seal with Deal-based access control
    *
    * @param plaintext - File data to encrypt
-   * @param encryptionConfig - Whitelist encryption configuration
+   * @param encryptionConfig - Deal encryption configuration
    * @returns Encrypted data with metadata
    */
   async encrypt(
     plaintext: Buffer,
-    encryptionConfig: WhitelistEncryptionConfig
+    encryptionConfig: DealEncryptionConfig
   ): Promise<SealEncryptionResult> {
     if (!config.app.enableServerEncryption) {
       throw new Error('Server-side encryption is disabled');
@@ -131,13 +135,13 @@ export class SealService {
     try {
       // The Seal SDK expects id as a hex string (with or without 0x prefix)
       // Remove 0x prefix for consistency with Seal's fromHex which handles both
-      const id = encryptionConfig.whitelistObjectId.startsWith('0x')
-        ? encryptionConfig.whitelistObjectId.slice(2)
-        : encryptionConfig.whitelistObjectId;
+      const id = encryptionConfig.dealId.startsWith('0x')
+        ? encryptionConfig.dealId.slice(2)
+        : encryptionConfig.dealId;
 
       if (debugConfig.seal) {
-        console.log('Encrypting data with Seal (whitelist mode)');
-        console.log('Whitelist Object ID:', encryptionConfig.whitelistObjectId);
+        console.log('Encrypting data with Seal (Deal-based access control)');
+        console.log('Deal ID:', encryptionConfig.dealId);
         console.log('Package ID:', encryptionConfig.packageId);
         console.log('ID (hex):', id);
         console.log('Data size:', plaintext.length, 'bytes');
@@ -147,12 +151,12 @@ export class SealService {
       const data = new Uint8Array(plaintext);
 
       // Encrypt using Seal
-      // The id parameter is the access control policy identifier (whitelist object ID as hex string)
-      // Seal will automatically prepend the package ID to create the full key-id
+      // The id parameter is the Deal object ID (as hex string)
+      // Seal will automatically prepend the package ID to create the full key-id: [packageId][dealId]
       const { encryptedObject } = await this.sealClient.encrypt({
         threshold: 2, // Require 2 out of N key servers
         packageId: encryptionConfig.packageId,
-        id, // whitelist object ID as hex string
+        id, // Deal object ID as hex string
         data,
       });
 
@@ -162,7 +166,7 @@ export class SealService {
       const result: SealEncryptionResult = {
         ciphertext: Buffer.from(encryptedObject),
         commitment,
-        policyObjectId: encryptionConfig.whitelistObjectId,
+        policyObjectId: encryptionConfig.dealId, // Store Deal ID for reference
         encryptedAt: new Date().toISOString(),
       };
 
@@ -180,17 +184,17 @@ export class SealService {
   }
 
   /**
-   * Decrypt file data using Seal with whitelist-based access control
+   * Decrypt file data using Seal with Deal-based access control
    *
    * @param ciphertext - Encrypted file data
-   * @param whitelistObjectId - Whitelist object ID for access control
-   * @param packageId - Package ID where whitelist module is deployed
-   * @param userAddress - User's Sui address (must be on whitelist)
+   * @param dealId - Deal object ID for access control
+   * @param packageId - Package ID where earnout module is deployed
+   * @param userAddress - User's Sui address (must be buyer/seller/auditor of Deal)
    * @returns Decrypted data with metadata
    */
   async decrypt(
     ciphertext: Buffer,
-    whitelistObjectId: string,
+    dealId: string,
     packageId: string,
     userAddress: string
   ): Promise<SealDecryptionResult> {
@@ -204,8 +208,8 @@ export class SealService {
 
     try {
       if (debugConfig.seal) {
-        console.log('Decrypting data with Seal (whitelist mode)');
-        console.log('Whitelist Object ID:', whitelistObjectId);
+        console.log('Decrypting data with Seal (Deal-based access control)');
+        console.log('Deal ID:', dealId);
         console.log('Package ID:', packageId);
         console.log('User Address:', userAddress);
         console.log('Ciphertext size:', ciphertext.length, 'bytes');
@@ -213,7 +217,7 @@ export class SealService {
 
       // Verify user has access before decrypting
       // In server-side mode, backend acts as trusted intermediary but must check user authorization
-      const accessResult = await this.verifyAccess(whitelistObjectId, userAddress);
+      const accessResult = await this.verifyAccess(dealId, userAddress);
       if (!accessResult.hasAccess) {
         throw new Error(`User ${userAddress} is not authorized to decrypt: ${accessResult.reason}`);
       }
@@ -245,20 +249,20 @@ export class SealService {
         suiClient: this.suiClient,
       });
 
-      // Build approval transaction that calls seal_approve from whitelist module
-      // This transaction is NOT executed, just used for verification
+      // Build approval transaction that calls seal_approve from earnout module
+      // This transaction is NOT executed, just used for verification by Seal Key Servers
       const tx = new Transaction();
 
-      // Call contracts::whitelist::seal_approve
-      // Arguments: (id: vector<u8>, wl: &Whitelist, ctx: &TxContext)
-      // Note: id should be the key-id bytes (without package prefix)
+      // Call contracts::earnout::seal_approve
+      // Arguments: (id: vector<u8>, deal: &Deal, ctx: &TxContext)
+      // The key-id format from Seal SDK is: [packageId (32 bytes)][dealId (32 bytes)]
       tx.moveCall({
-        target: `${packageId}::whitelist::seal_approve`,
+        target: `${packageId}::earnout::seal_approve`,
         arguments: [
-          // First argument: the key-id as bytes (convert from hex string)
+          // First argument: the full key-id as bytes (packageId + dealId)
           tx.pure.vector('u8', Array.from(fromHex(encryptedKeyId))),
-          // Second argument: reference to the Whitelist object
-          tx.object(whitelistObjectId),
+          // Second argument: reference to the Deal object
+          tx.object(dealId),
         ],
       });
 
@@ -292,7 +296,7 @@ export class SealService {
       const result: SealDecryptionResult = {
         plaintext: Buffer.from(plaintext),
         metadata: {
-          policyObjectId: whitelistObjectId,
+          policyObjectId: dealId,
           encryptedAt: new Date().toISOString(), // Should be retrieved from blob metadata
         },
       };
@@ -310,69 +314,73 @@ export class SealService {
   }
 
   /**
-   * Verify if user has access to decrypt (is on whitelist)
+   * Verify if user has access to decrypt (is a Deal participant)
    *
-   * @param whitelistObjectId - Whitelist object ID
+   * @param dealId - Deal object ID
    * @param userAddress - User's Sui address
-   * @param requiredRole - Required role (optional, for future role-based access)
+   * @param requiredRole - Required role (optional, for role-based access)
    * @returns Access verification result
    */
   async verifyAccess(
-    whitelistObjectId: string,
+    dealId: string,
     userAddress: string,
     requiredRole?: UserRole
   ): Promise<AccessVerificationResult> {
     try {
       if (debugConfig.seal) {
-        console.log('Verifying whitelist access for user:', userAddress);
-        console.log('Whitelist Object ID:', whitelistObjectId);
+        console.log('Verifying Deal access for user:', userAddress);
+        console.log('Deal ID:', dealId);
         console.log('Required role:', requiredRole || 'any');
       }
 
-      // Query the Whitelist object to check membership
-      const whitelistObject = await this.suiClient.getObject({
-        id: whitelistObjectId,
+      // Query the Deal object to check membership
+      const dealObject = await this.suiClient.getObject({
+        id: dealId,
         options: {
           showContent: true,
         },
       });
 
-      if (!whitelistObject.data) {
+      if (!dealObject.data) {
         return {
           hasAccess: false,
-          reason: 'Whitelist object not found',
+          reason: 'Deal object not found',
         };
       }
 
-      // Parse whitelist content
-      const content = whitelistObject.data.content;
+      // Parse Deal content
+      const content = dealObject.data.content;
       if (content?.dataType !== 'moveObject') {
         return {
           hasAccess: false,
-          reason: 'Invalid whitelist object type',
+          reason: 'Invalid Deal object type',
         };
       }
 
-      // Check if user is in the whitelist
-      // The whitelist stores addresses in a Table<address, bool>
-      // We need to use dynamic field query to check membership
-      const isWhitelisted = await this.checkWhitelistMembership(
-        whitelistObjectId,
+      // Check if user is a Deal participant (buyer/seller/auditor)
+      const { hasAccess, role } = await this.checkDealMembership(
+        dealId,
         userAddress
       );
 
-      if (!isWhitelisted) {
+      if (!hasAccess) {
         return {
           hasAccess: false,
-          reason: 'User is not on the whitelist',
+          reason: 'User is not a participant in this Deal',
         };
       }
 
-      // For now, we don't have role information in whitelist
-      // In production, you might want to store roles alongside addresses
+      // If a specific role is required, verify it matches
+      if (requiredRole && role !== requiredRole) {
+        return {
+          hasAccess: false,
+          reason: `User role '${role}' does not match required role '${requiredRole}'`,
+        };
+      }
+
       return {
         hasAccess: true,
-        role: requiredRole || 'buyer', // Default role
+        role,
       };
     } catch (error) {
       console.error('Access verification failed:', error);
@@ -384,310 +392,70 @@ export class SealService {
   }
 
   /**
-   * Check if an address is in the whitelist using dynamic field query
+   * Check if an address is a participant in a Deal
    *
-   * @param whitelistObjectId - Whitelist object ID
+   * @param dealId - Deal object ID
    * @param userAddress - Address to check
-   * @returns true if address is whitelisted
+   * @returns Object with hasAccess boolean and role if participant
    */
-  private async checkWhitelistMembership(
-    whitelistObjectId: string,
+  private async checkDealMembership(
+    dealId: string,
     userAddress: string
-  ): Promise<boolean> {
+  ): Promise<{ hasAccess: boolean; role?: UserRole }> {
     try {
-      // First, get the Whitelist object to find the Table's object ID
-      const whitelistObj = await this.suiClient.getObject({
-        id: whitelistObjectId,
+      // Get the Deal object to check if user is buyer/seller/auditor
+      const dealObj = await this.suiClient.getObject({
+        id: dealId,
         options: {
           showContent: true,
         },
       });
 
-      if (!whitelistObj.data?.content || whitelistObj.data.content.dataType !== 'moveObject') {
+      if (!dealObj.data?.content || dealObj.data.content.dataType !== 'moveObject') {
         if (debugConfig.seal) {
-          console.log('Failed to get whitelist object content');
+          console.log('Failed to get Deal object content');
         }
-        return false;
+        return { hasAccess: false };
       }
 
-      // Extract the Table's object ID from the 'addresses' field
-      const fields = whitelistObj.data.content.fields as Record<string, unknown>;
-      const addressesTable = fields.addresses as { fields: { id: { id: string } } };
-      const tableId = addressesTable?.fields?.id?.id;
+      // Extract buyer, seller, auditor from Deal fields
+      const fields = dealObj.data.content.fields as Record<string, unknown>;
 
-      if (!tableId) {
-        if (debugConfig.seal) {
-          console.log('Failed to extract table ID from whitelist');
-        }
-        return false;
-      }
+      const buyer = fields.buyer as string;
+      const seller = fields.seller as string;
+      const auditor = fields.auditor as string;
 
-      // Query the Table's dynamic field for the user address
-      const dynamicField = await this.suiClient.getDynamicFieldObject({
-        parentId: tableId,
-        name: {
-          type: 'address',
-          value: userAddress,
-        },
-      });
-
-      // If the field exists and has data, the user is whitelisted
-      if (!dynamicField.data) {
-        if (debugConfig.seal) {
-          console.log('User not found in whitelist:', userAddress);
-        }
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      // Field not found means user is not whitelisted
       if (debugConfig.seal) {
-        console.log('User not found in whitelist:', userAddress, error);
+        console.log('Deal participants:');
+        console.log('  buyer:', buyer);
+        console.log('  seller:', seller);
+        console.log('  auditor:', auditor);
+        console.log('  checking user:', userAddress);
       }
-      return false;
-    }
-  }
 
-  /**
-   * Add an address to the whitelist
-   *
-   * This builds a transaction but does NOT execute it.
-   * The frontend must sign and execute with a valid Cap holder.
-   *
-   * @param whitelistObjectId - Whitelist object ID
-   * @param capObjectId - Admin Cap object ID
-   * @param addressToAdd - Address to add to whitelist
-   * @param packageId - Package ID
-   * @returns Transaction bytes (unsigned)
-   */
-  async buildAddToWhitelistTx(
-    whitelistObjectId: string,
-    capObjectId: string,
-    addressToAdd: string,
-    packageId: string
-  ): Promise<Uint8Array> {
-    const tx = new Transaction();
-
-    tx.moveCall({
-      target: `${packageId}::whitelist::add`,
-      arguments: [
-        tx.object(whitelistObjectId),
-        tx.object(capObjectId),
-        tx.pure.address(addressToAdd),
-      ],
-    });
-
-    return tx.build({ client: this.suiClient });
-  }
-
-  /**
-   * Remove an address from the whitelist
-   *
-   * This builds a transaction but does NOT execute it.
-   *
-   * @param whitelistObjectId - Whitelist object ID
-   * @param capObjectId - Admin Cap object ID
-   * @param addressToRemove - Address to remove
-   * @param packageId - Package ID
-   * @returns Transaction bytes (unsigned)
-   */
-  async buildRemoveFromWhitelistTx(
-    whitelistObjectId: string,
-    capObjectId: string,
-    addressToRemove: string,
-    packageId: string
-  ): Promise<Uint8Array> {
-    const tx = new Transaction();
-
-    tx.moveCall({
-      target: `${packageId}::whitelist::remove`,
-      arguments: [
-        tx.object(whitelistObjectId),
-        tx.object(capObjectId),
-        tx.pure.address(addressToRemove),
-      ],
-    });
-
-    return tx.build({ client: this.suiClient });
-  }
-
-  /**
-   * Create a new whitelist
-   *
-   * This builds a transaction but does NOT execute it.
-   *
-   * @param packageId - Package ID
-   * @returns Transaction bytes (unsigned)
-   */
-  async buildCreateWhitelistTx(packageId: string): Promise<Uint8Array> {
-    const tx = new Transaction();
-
-    tx.moveCall({
-      target: `${packageId}::whitelist::create_whitelist_entry`,
-    });
-
-    return tx.build({ client: this.suiClient });
-  }
-
-  // =============================================================================
-  // Execute Methods (for backend testing - uses backend keypair to sign)
-  // =============================================================================
-
-  /**
-   * Execute create whitelist transaction using backend keypair
-   *
-   * @param packageId - Package ID
-   * @returns Transaction result with created object IDs
-   */
-  async executeCreateWhitelist(packageId: string): Promise<{
-    digest: string;
-    whitelistId: string;
-    capId: string;
-  }> {
-    if (!this.backendKeypair) {
-      throw new Error('Backend keypair not configured. Set SUI_BACKEND_PRIVATE_KEY in environment.');
-    }
-
-    const tx = new Transaction();
-
-    tx.moveCall({
-      target: `${packageId}::whitelist::create_whitelist_entry`,
-    });
-
-    const result = await this.suiClient.signAndExecuteTransaction({
-      transaction: tx,
-      signer: this.backendKeypair,
-      options: {
-        showEffects: true,
-        showObjectChanges: true,
-      },
-    });
-
-    // Extract created object IDs
-    const createdObjects = result.objectChanges?.filter(
-      (change) => change.type === 'created'
-    ) || [];
-
-    // Find Whitelist and Cap objects
-    let whitelistId = '';
-    let capId = '';
-
-    for (const obj of createdObjects) {
-      if (obj.type === 'created') {
-        const objectType = obj.objectType;
-        if (objectType.includes('::whitelist::Whitelist')) {
-          whitelistId = obj.objectId;
-        } else if (objectType.includes('::whitelist::Cap')) {
-          capId = obj.objectId;
-        }
+      // Check if user is one of the three roles and return the role
+      if (userAddress === buyer) {
+        return { hasAccess: true, role: 'buyer' };
+      } else if (userAddress === seller) {
+        return { hasAccess: true, role: 'seller' };
+      } else if (userAddress === auditor) {
+        return { hasAccess: true, role: 'auditor' };
       }
-    }
 
-    if (debugConfig.seal) {
-      console.log('Created whitelist:', whitelistId);
-      console.log('Created cap:', capId);
-      console.log('Transaction digest:', result.digest);
-    }
+      if (debugConfig.seal) {
+        console.log('User not found in Deal participants:', userAddress);
+      }
 
-    return {
-      digest: result.digest,
-      whitelistId,
-      capId,
-    };
+      return { hasAccess: false };
+    } catch (error) {
+      // Error means user is not authorized
+      if (debugConfig.seal) {
+        console.log('User not found in Deal participants:', userAddress, error);
+      }
+      return { hasAccess: false };
+    }
   }
 
-  /**
-   * Execute add to whitelist transaction using backend keypair
-   *
-   * @param whitelistObjectId - Whitelist object ID
-   * @param capObjectId - Admin Cap object ID
-   * @param addressToAdd - Address to add
-   * @param packageId - Package ID
-   * @returns Transaction digest
-   */
-  async executeAddToWhitelist(
-    whitelistObjectId: string,
-    capObjectId: string,
-    addressToAdd: string,
-    packageId: string
-  ): Promise<string> {
-    if (!this.backendKeypair) {
-      throw new Error('Backend keypair not configured. Set SUI_BACKEND_PRIVATE_KEY in environment.');
-    }
-
-    const tx = new Transaction();
-
-    tx.moveCall({
-      target: `${packageId}::whitelist::add`,
-      arguments: [
-        tx.object(whitelistObjectId),
-        tx.object(capObjectId),
-        tx.pure.address(addressToAdd),
-      ],
-    });
-
-    const result = await this.suiClient.signAndExecuteTransaction({
-      transaction: tx,
-      signer: this.backendKeypair,
-      options: {
-        showEffects: true,
-      },
-    });
-
-    if (debugConfig.seal) {
-      console.log('Added to whitelist:', addressToAdd);
-      console.log('Transaction digest:', result.digest);
-    }
-
-    return result.digest;
-  }
-
-  /**
-   * Execute remove from whitelist transaction using backend keypair
-   *
-   * @param whitelistObjectId - Whitelist object ID
-   * @param capObjectId - Admin Cap object ID
-   * @param addressToRemove - Address to remove
-   * @param packageId - Package ID
-   * @returns Transaction digest
-   */
-  async executeRemoveFromWhitelist(
-    whitelistObjectId: string,
-    capObjectId: string,
-    addressToRemove: string,
-    packageId: string
-  ): Promise<string> {
-    if (!this.backendKeypair) {
-      throw new Error('Backend keypair not configured. Set SUI_BACKEND_PRIVATE_KEY in environment.');
-    }
-
-    const tx = new Transaction();
-
-    tx.moveCall({
-      target: `${packageId}::whitelist::remove`,
-      arguments: [
-        tx.object(whitelistObjectId),
-        tx.object(capObjectId),
-        tx.pure.address(addressToRemove),
-      ],
-    });
-
-    const result = await this.suiClient.signAndExecuteTransaction({
-      transaction: tx,
-      signer: this.backendKeypair,
-      options: {
-        showEffects: true,
-      },
-    });
-
-    if (debugConfig.seal) {
-      console.log('Removed from whitelist:', addressToRemove);
-      console.log('Transaction digest:', result.digest);
-    }
-
-    return result.digest;
-  }
 
   /**
    * Generate cryptographic commitment for encrypted data

@@ -52,13 +52,12 @@ export function useAuditRecords(options: UseAuditRecordsOptions): UseAuditRecord
 
       // Sign authentication headers
       const timestamp = new Date().toISOString();
-      const message = new TextEncoder().encode(timestamp);
 
       // For now, we'll use a placeholder signature
       // In production, this should use wallet signing
       const signature = 'placeholder_signature';
 
-      const response = await fetch(`/api/v1/deals/${dealId}/blobs?${params.toString()}`, {
+      const response = await fetch(`/api/v1/deals/${dealId}/periods/${periodId}/blobs`, {
         headers: {
           'X-Sui-Address': currentAccount.address,
           'X-Sui-Signature': signature,
@@ -71,7 +70,7 @@ export function useAuditRecords(options: UseAuditRecordsOptions): UseAuditRecord
       }
 
       const data = await response.json();
-      setRecords(data.items || []);
+      setRecords(data.blobs || []);
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Unknown error');
       setError(error);
@@ -79,7 +78,7 @@ export function useAuditRecords(options: UseAuditRecordsOptions): UseAuditRecord
     } finally {
       setIsLoading(false);
     }
-  }, [dealId, periodId, enabled, currentAccount?.address]);
+  }, [dealId, periodId, enabled, currentAccount]);
 
   // Initial fetch
   useEffect(() => {

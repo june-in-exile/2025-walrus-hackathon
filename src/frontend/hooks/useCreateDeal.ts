@@ -18,11 +18,53 @@ import {
 import { fromHex } from '@mysten/sui/utils';
 import { toast } from 'sonner';
 
+// Shared signature cache (same as useDeals and useDashboard)
+interface SignatureCache {
+  signature: string;
+  message: string;
+  timestamp: number;
+  address: string;
+}
+
+const SIGNATURE_CACHE_DURATION = 4 * 60 * 1000;
+const SIGNATURE_CACHE_KEY = 'sui-signature-cache';
+
+function getPersistedSignatureCache(): SignatureCache | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const cached = sessionStorage.getItem(SIGNATURE_CACHE_KEY);
+    if (!cached) return null;
+    return JSON.parse(cached) as SignatureCache;
+  } catch {
+    return null;
+  }
+}
+
+function setPersistedSignatureCache(cache: SignatureCache): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(SIGNATURE_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 interface CreateDealOptions {
+  agreementBlobId: string;
   name: string;
   sellerAddress: string;
   auditorAddress: string;
-  onSuccess?: (dealId: string) => void;
+  startDateMs: number;
+  periodMonths: number;
+  kpiThreshold: number;
+  maxPayout: number;
+  headquarter: number;
+  assetIds: string[];
+  assetUsefulLives: number[];
+  subperiodIds: string[];
+  subperiodStartDates: number[];
+  subperiodEndDates: number[];
+  onSuccess?: (txDigest: string) => void;
   onError?: (error: Error) => void;
 }
 
@@ -42,7 +84,24 @@ export function useCreateDeal(): UseCreateDealReturn {
 
   const createDeal = useCallback(
     async (options: CreateDealOptions) => {
-      const { name, sellerAddress, auditorAddress, onSuccess, onError } = options;
+      const {
+        agreementBlobId,
+        name,
+        sellerAddress,
+        auditorAddress,
+        startDateMs,
+        periodMonths,
+        kpiThreshold,
+        maxPayout,
+        headquarter,
+        assetIds,
+        assetUsefulLives,
+        subperiodIds,
+        subperiodStartDates,
+        subperiodEndDates,
+        onSuccess,
+        onError,
+      } = options;
 
       if (!currentAccount?.address) {
         const err = new Error('Wallet not connected');
@@ -56,15 +115,37 @@ export function useCreateDeal(): UseCreateDealReturn {
       setError(null);
 
       try {
-        // 1. Sign timestamp for authentication
-        const timestamp = new Date().toISOString();
-        const messageBytes = new TextEncoder().encode(timestamp);
+        // 1. Get or create auth signature (reuse cached signature if available)
+        let signature: string;
+        let timestamp: string;
 
-        toast.info('Please sign the authentication message in your wallet');
+        const cache = getPersistedSignatureCache();
+        const now = Date.now();
 
-        const { signature } = await signPersonalMessage({
-          message: messageBytes,
-        });
+        if (cache && cache.address === currentAccount.address && now - cache.timestamp < SIGNATURE_CACHE_DURATION) {
+          // Reuse cached signature
+          signature = cache.signature;
+          timestamp = cache.message;
+        } else {
+          // Sign new timestamp for authentication
+          timestamp = new Date().toISOString();
+          const messageBytes = new TextEncoder().encode(timestamp);
+
+          toast.info('Please sign the authentication message in your wallet');
+
+          const result = await signPersonalMessage({
+            message: messageBytes,
+          });
+          signature = result.signature;
+
+          // Cache the signature
+          setPersistedSignatureCache({
+            signature,
+            message: timestamp,
+            timestamp: now,
+            address: currentAccount.address,
+          });
+        }
 
         // 2. Call API to build transaction
         toast.loading('Creating deal transaction...', { id: 'create-deal' });
@@ -78,9 +159,20 @@ export function useCreateDeal(): UseCreateDealReturn {
             'X-Sui-Signature-Message': timestamp,
           },
           body: JSON.stringify({
+            agreementBlobId,
             name,
             sellerAddress,
             auditorAddress,
+            startDateMs,
+            periodMonths,
+            kpiThreshold,
+            maxPayout,
+            headquarter,
+            assetIds,
+            assetUsefulLives,
+            subperiodIds,
+            subperiodStartDates,
+            subperiodEndDates,
             buyerAddress: currentAccount.address,
           }),
         });
@@ -105,40 +197,28 @@ export function useCreateDeal(): UseCreateDealReturn {
         const txBytes = fromHex(data.transaction.txBytes);
         const tx = Transaction.from(txBytes);
 
-        await signAndExecuteTransaction(
-          {
-            transaction: tx,
-          },
-          {
-            onSuccess: (result) => {
-              toast.success('Deal created successfully!', {
-                description: `Transaction: ${result.digest.slice(0, 16)}...`,
-              });
-              // Extract deal ID from transaction effects (created objects)
-              // For now, use the transaction digest as a reference
-              onSuccess?.(result.digest);
-            },
-            onError: (err) => {
-              console.error('Create deal transaction failed:', err);
-              const error = err instanceof Error ? err : new Error('Transaction failed');
-              setError(error);
-              toast.error('Failed to create deal', {
-                description: error.message,
-              });
-              onError?.(error);
-            },
-          }
-        );
+        // 4. Execute the transaction with a cleaner async/await pattern
+        const result = await signAndExecuteTransaction({
+          transaction: tx,
+        });
+
+        // Handle success case
+        toast.success('Deal created successfully!', {
+          description: `Transaction: ${result.digest.slice(0, 16)}...`,
+        });
+        onSuccess?.(result.digest);
       } catch (err) {
+        // This catch block now handles errors from the entire process,
+        // including signing and transaction execution.
         toast.dismiss('create-deal');
         const error = err instanceof Error ? err : new Error('Unknown error');
         setError(error);
         console.error('Create deal failed:', error);
 
-        // Handle user rejection
+        // Handle user rejection from either signing or transaction
         if (error.message.includes('rejected') || error.message.includes('cancelled')) {
           toast.error('Operation cancelled', {
-            description: 'You cancelled the request',
+            description: 'You cancelled the request in your wallet',
           });
         } else {
           toast.error('Failed to create deal', {
@@ -150,7 +230,7 @@ export function useCreateDeal(): UseCreateDealReturn {
         setIsCreating(false);
       }
     },
-    [currentAccount?.address, signPersonalMessage, signAndExecuteTransaction]
+    [currentAccount, signPersonalMessage, signAndExecuteTransaction]
   );
 
   return {

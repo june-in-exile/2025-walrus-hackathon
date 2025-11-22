@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, Calendar, TrendingUp, CheckCircle2 } from 'lucide-react';
-import type { DealSummary } from '@/src/frontend/generated/api-client';
+import type { DealSummary } from '@/src/frontend/lib/api-client';
 
 interface DealCardProps {
   deal: DealSummary;

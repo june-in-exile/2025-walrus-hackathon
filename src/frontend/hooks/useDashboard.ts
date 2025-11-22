@@ -5,8 +5,8 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useCurrentAccount, useSignPersonalMessage } from '@mysten/dapp-kit';
-import { useCallback, useRef } from 'react';
-import type { DashboardResponse } from '@/src/frontend/generated/api-client';
+import { useCallback } from 'react';
+import type { DashboardResponse } from '@/src/frontend/lib/api-client';
 
 // Query keys
 export const dashboardKeys = {
@@ -19,10 +19,33 @@ interface SignatureCache {
   signature: string;
   message: string;
   timestamp: number;
+  address: string;
 }
 
 // Signature is valid for 4 minutes (API allows 5 minutes)
 const SIGNATURE_CACHE_DURATION = 4 * 60 * 1000;
+const SIGNATURE_CACHE_KEY = 'sui-signature-cache';
+
+// Helper functions for persistent signature cache (shared with useDeals)
+function getPersistedSignatureCache(): SignatureCache | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const cached = sessionStorage.getItem(SIGNATURE_CACHE_KEY);
+    if (!cached) return null;
+    return JSON.parse(cached) as SignatureCache;
+  } catch {
+    return null;
+  }
+}
+
+function setPersistedSignatureCache(cache: SignatureCache): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(SIGNATURE_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 /**
  * Hook to fetch dashboard data for a specific deal
@@ -31,15 +54,14 @@ const SIGNATURE_CACHE_DURATION = 4 * 60 * 1000;
 export function useDashboard(dealId: string) {
   const currentAccount = useCurrentAccount();
   const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
-  const signatureCacheRef = useRef<SignatureCache | null>(null);
 
   const getAuthHeaders = useCallback(async (): Promise<Record<string, string> | null> => {
     if (!currentAccount?.address) return null;
 
-    // Check if we have a valid cached signature
-    const cache = signatureCacheRef.current;
+    // Check if we have a valid cached signature in sessionStorage
+    const cache = getPersistedSignatureCache();
     const now = Date.now();
-    if (cache && now - cache.timestamp < SIGNATURE_CACHE_DURATION) {
+    if (cache && cache.address === currentAccount.address && now - cache.timestamp < SIGNATURE_CACHE_DURATION) {
       return {
         'X-Sui-Address': currentAccount.address,
         'X-Sui-Signature': cache.signature,
@@ -56,12 +78,13 @@ export function useDashboard(dealId: string) {
         message: messageBytes,
       });
 
-      // Cache the signature
-      signatureCacheRef.current = {
+      // Cache the signature in sessionStorage
+      setPersistedSignatureCache({
         signature,
         message: timestamp,
         timestamp: now,
-      };
+        address: currentAccount.address,
+      });
 
       return {
         'X-Sui-Address': currentAccount.address,
@@ -72,7 +95,7 @@ export function useDashboard(dealId: string) {
       // User rejected or error occurred
       return null;
     }
-  }, [currentAccount?.address, signPersonalMessage]);
+  }, [currentAccount, signPersonalMessage]);
 
   return useQuery<DashboardResponse>({
     queryKey: dashboardKeys.detail(dealId),

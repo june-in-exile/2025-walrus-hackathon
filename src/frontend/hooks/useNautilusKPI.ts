@@ -126,7 +126,7 @@ export function useNautilusKPI(): UseNautilusKPIReturn {
         setIsCalculating(false);
       }
     },
-    [currentAccount?.address]
+    [currentAccount]
   );
 
   const submitKPI = useCallback(
@@ -186,7 +186,7 @@ export function useNautilusKPI(): UseNautilusKPIReturn {
         setIsSubmitting(false);
       }
     },
-    [currentAccount?.address, signAndExecuteTransaction]
+    [currentAccount, signAndExecuteTransaction]
   );
 
   return {

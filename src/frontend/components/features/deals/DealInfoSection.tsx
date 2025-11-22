@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Calendar, DollarSign, Users, FileText, TrendingUp, Target, Percent, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
-import type { DashboardResponseDealInfo } from '@/src/frontend/generated/api-client';
+import type { DashboardResponseDealInfo } from '@/src/frontend/lib/api-client';
 import type { DealWithExtendedFields, PeriodWithKPI } from '@/src/frontend/lib/mock-data';
 import { mockDeals } from '@/src/frontend/lib/mock-data';
 import { calculateTotalMonthlyDepreciation } from '@/src/shared/types/asset';

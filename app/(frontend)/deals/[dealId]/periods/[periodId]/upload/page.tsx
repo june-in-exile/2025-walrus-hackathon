@@ -2,14 +2,16 @@
 
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useCurrentAccount } from '@mysten/dapp-kit';
+import { useCurrentAccount, useSuiClient, useSignPersonalMessage } from '@mysten/dapp-kit';
 import { useRole } from '@/src/frontend/contexts/RoleContext';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from 'sonner';
 import { useDashboard } from '@/src/frontend/hooks/useDashboard';
-import { getPeriodBlobs } from '@/src/frontend/lib/mock-periods';
+import { useWalrusUpload, type DataType } from '@/src/frontend/hooks/useWalrusUpload';
+import { usePeriodBlobs } from '@/src/frontend/hooks/usePeriodBlobs';
+import { decryptData } from '@/src/frontend/lib/seal';
 import { WalletButton } from '@/src/frontend/components/wallet/WalletButton';
 import { FileUploadZone } from '@/src/frontend/components/features/upload/FileUploadZone';
 import { RequestChangesModal } from '@/src/frontend/components/features/auditor/RequestChangesModal';
@@ -45,18 +47,12 @@ import {
   XCircle,
   AlertCircle,
 } from 'lucide-react';
-import Link from 'next/link';
 
 const uploadSchema = z.object({
   file: z.instanceof(File, { message: 'Please select a file' }),
   dataType: z.enum([
-    'revenue_journal',
-    'ebitda_report',
+    'revenue_report',
     'expense_report',
-    'balance_sheet',
-    'cash_flow',
-    'kpi_calculation',
-    'audit_report',
     'custom',
   ]),
   customDataType: z.string().optional(),
@@ -64,6 +60,18 @@ const uploadSchema = z.object({
 });
 
 type UploadFormData = z.infer<typeof uploadSchema>;
+
+// Type for newly uploaded files in session state
+type UploadedFile = {
+  blobId: string;
+  filename: string;
+  dataType: string;
+  customDataType?: string;
+  description?: string;
+  size: number;
+  uploadedAt: Date;
+  reviewStatus: 'pending' | 'approved' | 'changes_requested';
+};
 
 export default function DocumentsPage() {
   const params = useParams();
@@ -73,8 +81,12 @@ export default function DocumentsPage() {
   const dealId = params.dealId as string;
   const periodId = params.periodId as string;
   const { data: dashboard, isLoading } = useDashboard(dealId);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState<any[]>([]);
+  const { upload: uploadToWalrus, isUploading } = useWalrusUpload();
+  const { data: periodBlobsData, isLoading: isBlobsLoading } = usePeriodBlobs(dealId, periodId);
+  const suiClient = useSuiClient();
+  const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [downloadingBlobId, setDownloadingBlobId] = useState<string | null>(null);
   const [requestChangesModal, setRequestChangesModal] = useState<{
     open: boolean;
     blobId: string;
@@ -88,7 +100,7 @@ export default function DocumentsPage() {
   const form = useForm<UploadFormData>({
     resolver: zodResolver(uploadSchema),
     defaultValues: {
-      dataType: 'revenue_journal',
+      dataType: 'revenue_report',
       description: '',
     },
   });
@@ -96,7 +108,6 @@ export default function DocumentsPage() {
   const watchDataType = form.watch('dataType');
 
   const onSubmit = async (data: UploadFormData) => {
-    setIsUploading(true);
     try {
       console.log('Uploading file:', {
         dealId,
@@ -107,44 +118,54 @@ export default function DocumentsPage() {
         description: data.description,
       });
 
-      // TODO: Implement actual Walrus upload
-      // 1. Encrypt file using Seal SDK
-      // 2. Upload to Walrus via relay API
-      // 3. Store blob reference on-chain
+      // Upload to Walrus with Seal encryption
+      const result = await uploadToWalrus({
+        file: data.file,
+        dealId,
+        periodId,
+        dataType: data.dataType as DataType,
+        customDataType: data.customDataType,
+        description: data.description,
+        enableEncryption: true, // Enable Seal encryption
+        onSuccess: (uploadResult) => {
+          // Add to uploaded files list
+          setUploadedFiles((prev) => [
+            ...prev,
+            {
+              blobId: uploadResult.blobId,
+              filename: uploadResult.filename,
+              dataType: data.dataType,
+              customDataType: data.customDataType,
+              description: data.description,
+              size: uploadResult.size,
+              uploadedAt: new Date(uploadResult.uploadedAt),
+              reviewStatus: 'pending',
+            },
+          ]);
 
-      // Simulate upload
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // Add to uploaded files list
-      setUploadedFiles((prev) => [
-        ...prev,
-        {
-          filename: data.file.name,
-          dataType: data.dataType,
-          customDataType: data.customDataType,
-          description: data.description,
-          size: data.file.size,
-          uploadedAt: new Date(),
-          reviewStatus: 'pending',
+          // Reset form
+          form.reset({
+            dataType: 'revenue_report',
+            description: '',
+          });
         },
-      ]);
-
-      // Reset form
-      form.reset({
-        dataType: 'revenue_journal',
-        description: '',
+        onError: (error) => {
+          console.error('Failed to upload file:', error);
+        },
       });
 
-      toast.success('File uploaded successfully!');
+      if (!result) {
+        // Upload was cancelled or failed (error already shown by hook)
+        return;
+      }
     } catch (error) {
       console.error('Failed to upload file:', error);
       toast.error('Failed to upload file. Please try again.');
-    } finally {
-      setIsUploading(false);
     }
   };
 
   const handleApproveFile = async (blobId: string) => {
+    console.log('Approving file:', blobId);
     toast.success('File approved', {
       description: 'File has been marked as approved.',
     });
@@ -165,6 +186,68 @@ export default function DocumentsPage() {
         description: 'Please try again later.',
       });
       throw error;
+    }
+  };
+
+  const handleDownload = async (blobId: string, filename: string) => {
+    if (!currentAccount?.address) {
+      toast.error('Please connect your wallet first');
+      return;
+    }
+
+    setDownloadingBlobId(blobId);
+
+    try {
+      const message = new Date().toISOString();
+      const { signature } = await signPersonalMessage({
+        message: new TextEncoder().encode(message),
+      });
+
+      const response = await fetch(`/api/v1/walrus/download/${blobId}?dealId=${dealId}`, {
+        headers: {
+          'X-Sui-Address': currentAccount.address,
+          'X-Sui-Signature': signature,
+          'X-Sui-Signature-Message': message,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to download file');
+      }
+
+      const encryptedBuffer = await response.arrayBuffer();
+      const packageId = process.env.NEXT_PUBLIC_EARNOUT_PACKAGE_ID;
+
+      if (!packageId) {
+        throw new Error('Seal decryption is not configured');
+      }
+
+      const decryptedBuffer = await decryptData(
+        suiClient,
+        encryptedBuffer,
+        dealId,
+        packageId,
+        currentAccount.address,
+        signPersonalMessage
+      );
+
+      const blob = new Blob([new Uint8Array(decryptedBuffer)]);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      toast.success(`Downloaded ${filename}`);
+    } catch (error) {
+      console.error('Download failed:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to download file');
+    } finally {
+      setDownloadingBlobId(null);
     }
   };
 
@@ -229,8 +312,8 @@ export default function DocumentsPage() {
   // Find the current period
   const period = dashboard?.periodsSummary.find((p) => p.periodId === periodId);
 
-  // Get existing blobs from period (using helper function to access mock data)
-  const existingBlobs = getPeriodBlobs(dealId, periodId);
+  // Fetch existing blobs from blockchain via API
+  const existingBlobs = periodBlobsData?.blobs || [];
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B';
@@ -238,7 +321,7 @@ export default function DocumentsPage() {
     return (bytes / 1048576).toFixed(1) + ' MB';
   };
 
-  const formatDate = (date: any) => {
+  const formatDate = (date: string | Date | undefined) => {
     if (!date) return 'N/A';
     try {
       const d = typeof date === 'string' ? new Date(date) : date;
@@ -311,13 +394,15 @@ export default function DocumentsPage() {
                         <FormField
                           control={form.control}
                           name="file"
-                          render={({ field: { value, onChange, ...field } }) => (
+                          render={({ field: { value, onChange } }) => (
                             <FormItem>
                               <FormLabel>Select File *</FormLabel>
                               <FormControl>
                                 <FileUploadZone
                                   onFileSelect={(file) => onChange(file)}
                                   disabled={isUploading}
+                                  dealId={dealId}
+                                  enableEncryption={true}
                                 />
                               </FormControl>
                               {value && (
@@ -347,13 +432,8 @@ export default function DocumentsPage() {
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                  <SelectItem value="revenue_journal">Revenue Journal</SelectItem>
-                                  <SelectItem value="ebitda_report">EBITDA Report</SelectItem>
+                                  <SelectItem value="revenue_report">Revenue Report</SelectItem>
                                   <SelectItem value="expense_report">Expense Report</SelectItem>
-                                  <SelectItem value="balance_sheet">Balance Sheet</SelectItem>
-                                  <SelectItem value="cash_flow">Cash Flow Statement</SelectItem>
-                                  <SelectItem value="kpi_calculation">KPI Calculation</SelectItem>
-                                  <SelectItem value="audit_report">Audit Report</SelectItem>
                                   <SelectItem value="custom">Custom</SelectItem>
                                 </SelectContent>
                               </Select>
@@ -474,7 +554,12 @@ export default function DocumentsPage() {
                   {currentRole === 'auditor' && 'Documents for Review'}
                 </h3>
 
-                {existingBlobs.length === 0 && uploadedFiles.length === 0 ? (
+                {isBlobsLoading ? (
+                  <div className="text-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
+                    <p className="text-muted-foreground">Loading documents...</p>
+                  </div>
+                ) : existingBlobs.length === 0 && uploadedFiles.length === 0 ? (
                   <div className="text-center py-12">
                     <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
                     <p className="text-muted-foreground">
@@ -483,79 +568,56 @@ export default function DocumentsPage() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {/* Existing blobs from mock data */}
-                    {existingBlobs.map((blob: any) => (
-                      <div
-                        key={blob.blobId}
-                        className="p-4 rounded-lg border bg-muted/30"
-                      >
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-center gap-3 flex-1">
-                            <FileText className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <p className="font-medium truncate">{blob.metadata?.filename || 'Unknown file'}</p>
-                              <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                <span>{formatFileSize(blob.size)}</span>
-                                <span>{formatDate(blob.uploadedAt)}</span>
+                    {/* Existing blobs from blockchain */}
+                    {existingBlobs.map((blob) => {
+                      const filename = blob.metadata?.filename || blob.metadata?.customDataType || blob.dataType;
+                      return (
+                        <div
+                          key={blob.blobId}
+                          className="p-4 rounded-lg border bg-muted/30"
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex items-center gap-3 flex-1">
+                              <FileText className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium truncate">{filename}</p>
+                                {blob.metadata?.description && (
+                                  <p className="text-xs text-muted-foreground mt-1">{blob.metadata.description}</p>
+                                )}
+                                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                  <span title={blob.blobId}>
+                                    Blob ID: {blob.blobId.substring(0, 8)}...
+                                  </span>
+                                  <span>{formatDate(blob.uploadedAt)}</span>
+                                </div>
                               </div>
                             </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDownload(blob.blobId, filename)}
+                              disabled={downloadingBlobId === blob.blobId}
+                            >
+                              {downloadingBlobId === blob.blobId ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Download className="h-4 w-4" />
+                              )}
+                            </Button>
                           </div>
-                          <Button variant="ghost" size="sm">
-                            <Download className="h-4 w-4" />
-                          </Button>
-                        </div>
 
-                        {/* Status Badge */}
+                        {/* Status Badge - Note: Audit status not yet integrated */}
                         <div className="mb-2">
-                          {getStatusBadge(blob.reviewStatus)}
+                          {getStatusBadge('pending')}
                         </div>
 
-                        {/* Review Notes */}
-                        {blob.reviewNotes && (
-                          <div className="mt-3 p-3 bg-background rounded text-sm">
-                            <p className="font-medium text-xs text-muted-foreground mb-1">
-                              {blob.reviewStatus === 'approved' ? 'Auditor Notes:' : 'Requested Changes:'}
-                            </p>
-                            <p className="text-muted-foreground">{blob.reviewNotes}</p>
-                            {blob.reviewedAt && (
-                              <p className="text-xs text-muted-foreground mt-2">
-                                Reviewed {formatDate(blob.reviewedAt)}
-                              </p>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Auditor Action Buttons */}
-                        {currentRole === 'auditor' && blob.reviewStatus === 'pending' && (
-                          <div className="flex gap-2 mt-3 pt-3 border-t">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="flex-1"
-                              onClick={() => handleApproveFile(blob.blobId)}
-                            >
-                              <CheckCircle2 className="mr-2 h-4 w-4" />
-                              Approve
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="flex-1"
-                              onClick={() => {
-                                setRequestChangesModal({
-                                  open: true,
-                                  blobId: blob.blobId,
-                                  filename: blob.metadata?.filename || 'Unknown file',
-                                });
-                              }}
-                            >
-                              <XCircle className="mr-2 h-4 w-4" />
-                              Request Changes
-                            </Button>
-                          </div>
-                        )}
+                        {/* Uploader info */}
+                        <div className="text-xs text-muted-foreground mt-2">
+                          Uploaded by: {blob.uploaderAddress.substring(0, 8)}...{blob.uploaderAddress.substring(blob.uploaderAddress.length - 6)}
+                        </div>
                       </div>
-                    ))}
+                      );
+                    })}
 
                     {/* Newly uploaded files (session only) */}
                     {uploadedFiles.map((file, index) => (
@@ -586,10 +648,10 @@ export default function DocumentsPage() {
             </Card>
           </div>
         </div>
-      </section>
+      </section >
 
       {/* Request Changes Modal */}
-      <RequestChangesModal
+      < RequestChangesModal
         open={requestChangesModal.open}
         onOpenChange={(open) =>
           setRequestChangesModal((prev) => ({ ...prev, open }))
@@ -597,6 +659,6 @@ export default function DocumentsPage() {
         filename={requestChangesModal.filename}
         onSubmit={handleRequestChanges}
       />
-    </div>
+    </div >
   );
 }

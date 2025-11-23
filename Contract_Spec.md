@@ -34,7 +34,7 @@ This endpoint deploys a new Earn-out smart contract with its foundational, immut
   "contingentConsiderationAmount": 30000000,
 
   "rules": {
-    "headquarterExpenseAllocationPercentage": 0.10
+    "headquarterExpenseAllocationPercentage": 10
   }
 }
 ```

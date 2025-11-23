@@ -27,7 +27,6 @@ const createDealSchema = z.object({
   startDate: z.string().min(1, 'Start date is required'),
 
   // Blockchain Addresses
-  acquirerAddress: z.string().regex(/^0x[a-fA-F0-9]{64}$/, 'Invalid Sui address format'),
   acquireeAddress: z.string().regex(/^0x[a-fA-F0-9]{64}$/, 'Invalid Sui address format'),
   auditorAddress: z.string().regex(/^0x[a-fA-F0-9]{64}$/, 'Invalid Sui address format'),
 
@@ -341,23 +340,10 @@ export default function CreateDealPage() {
               Blockchain Addresses
             </CardTitle>
             <CardDescription>
-              Sui wallet addresses for all parties involved in the deal
+              Sui wallet addresses for all parties involved in the deal. Your connected wallet will be used as the Buyer address.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="acquirerAddress">Acquirer Address (Buyer)</Label>
-              <Input
-                id="acquirerAddress"
-                placeholder="0x..."
-                {...register('acquirerAddress')}
-                className="font-mono text-sm"
-              />
-              {errors.acquirerAddress && (
-                <p className="text-sm text-destructive mt-1">{errors.acquirerAddress.message}</p>
-              )}
-            </div>
-
             <div>
               <Label htmlFor="acquireeAddress">Acquiree Address (Seller)</Label>
               <Input

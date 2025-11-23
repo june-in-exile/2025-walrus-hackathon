@@ -52,6 +52,8 @@ next-env.d.ts
 CLAUDE.md
 GEMINI.md
 .mcp.json
+.github/workflows/claude-code-review.yml
+.github/workflows/claude.yml
 
 # GitHub workflows (if not committing)
 .github

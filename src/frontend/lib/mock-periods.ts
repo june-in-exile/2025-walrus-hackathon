@@ -3,7 +3,7 @@
  * This bridges the gap between Period data and PeriodSummary
  */
 
-import { mockDeals, WalrusBlobWithAudit } from './mock-data';
+import { mockDeals } from './mock-data';
 
 /**
  * Get walrus blobs for a specific period

@@ -1,0 +1,144 @@
+paths:
+  /api/v1/tee/compute:
+    post:
+      summary: Compute KPI with TEE Attestation
+      description: |
+        Calculate cumulative KPI from multiple financial documents with cryptographic attestation.
+
+        **WARNING**: This endpoint currently uses MOCK TEE attestation for testing purposes.
+        The attestation is NOT cryptographically secure and should NOT be used in production.
+
+        Supported document types:
+        - Journal Entry: Sales revenue extraction
+        - Fixed Assets Register: Depreciation calculation
+        - Payroll Expense: Gross pay deduction
+        - Overhead Report: Overhead allocation (10%)
+
+        The service returns:
+        - Cumulative KPI value
+        - 144-byte attestation for blockchain verification
+        - Computation hash (SHA-256 of input documents)
+
+      operationId: computeKPI
+      tags:
+        - TEE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - documents
+              properties:
+                documents:
+                  type: array
+                  description: Array of financial documents to process
+                  minItems: 1
+                  items:
+                    type: object
+                    description: Financial document (structure varies by type)
+                  example:
+                    - journalEntryId: "JE-2025-001"
+                      credits:
+                        - account: "Sales Revenue"
+                          amount: 50000.0
+                    - employeeDetails: {}
+                      grossPay: 20000.0
+                operation:
+                  type: string
+                  enum: [simple, with_attestation]
+                  default: with_attestation
+                  description: |
+                    Computation mode:
+                    - simple: Calculate KPI only (no attestation)
+                    - with_attestation: Calculate KPI with mock TEE attestation
+                initial_kpi:
+                  type: number
+                  default: 0
+                  description: Initial KPI value (for incremental calculations)
+      responses:
+        '200':
+          description: KPI computation successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      kpi_result:
+                        $ref: '#/components/schemas/KPIResult'
+                      attestation:
+                        $ref: '#/components/schemas/TEEAttestation'
+                      attestation_bytes:
+                        type: array
+                        items:
+                          type: integer
+                          minimum: 0
+                          maximum: 255
+                        minItems: 144
+                        maxItems: 144
+                        description: 144-byte attestation for blockchain submission
+                  message:
+                    type: string
+                    example: "KPI calculated with mock TEE attestation"
+        '400':
+          description: Invalid request (missing or invalid documents)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Invalid request: documents must be an array"
+        '500':
+          description: Internal server error during computation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Internal server error during KPI computation"
+                  message:
+                    type: string
+
+    get:
+      summary: Get TEE Compute API Information
+      description: Returns API documentation and usage examples
+      operationId: getTEEComputeInfo
+      tags:
+        - TEE
+      responses:
+        '200':
+          description: API information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  endpoint:
+                    type: string
+                  methods:
+                    type: array
+                    items:
+                      type: string
+                  description:
+                    type: string
+                  usage:
+                    type: object
+                  warning:
+                    type: string

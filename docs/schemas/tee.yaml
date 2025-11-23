@@ -1,0 +1,169 @@
+components:
+  schemas:
+    KPIResult:
+      type: object
+      description: KPI calculation result
+      properties:
+        kpi:
+          type: number
+          description: Cumulative KPI value
+          example: 30000.0
+        change:
+          type: number
+          description: KPI change from initial value
+          example: 30000.0
+        file_type:
+          type: string
+          description: Last processed file type
+          enum:
+            - JournalEntry
+            - FixedAssetsRegister
+            - PayrollExpense
+            - OverheadReport
+            - Unknown
+          example: "PayrollExpense"
+
+    TEEAttestation:
+      type: object
+      description: TEE attestation structure (144 bytes when serialized)
+      properties:
+        kpi_value:
+          type: integer
+          format: int64
+          description: KPI value as u64 (kpi * 1000 to preserve 3 decimals)
+          example: 30000000
+        computation_hash:
+          type: string
+          format: hex
+          description: SHA-256 hash of input documents (32 bytes as hex string)
+          example: "a1b2c3d4e5f6..."
+        timestamp:
+          type: integer
+          format: int64
+          description: Unix timestamp in milliseconds
+          example: 1700000000000
+        tee_public_key:
+          type: string
+          format: hex
+          description: TEE's Ed25519 public key (32 bytes as hex string)
+          example: "1234abcd5678ef..."
+        signature:
+          type: string
+          format: hex
+          description: Ed25519 signature (64 bytes as hex string)
+          example: "9876fedc5432ba..."
+
+    FinancialDocument:
+      oneOf:
+        - $ref: '#/components/schemas/JournalEntry'
+        - $ref: '#/components/schemas/FixedAssetsRegister'
+        - $ref: '#/components/schemas/PayrollExpense'
+        - $ref: '#/components/schemas/OverheadReport'
+
+    JournalEntry:
+      type: object
+      description: Journal Entry document
+      required:
+        - journalEntryId
+      properties:
+        journalEntryId:
+          type: string
+          example: "JE-2025-001"
+        date:
+          type: string
+          format: date
+          example: "2025-01-31"
+        credits:
+          type: array
+          items:
+            type: object
+            properties:
+              account:
+                type: string
+                example: "Sales Revenue"
+              amount:
+                type: number
+                example: 50000.0
+        debits:
+          type: array
+          items:
+            type: object
+            properties:
+              account:
+                type: string
+              amount:
+                type: number
+
+    FixedAssetsRegister:
+      type: object
+      description: Fixed Assets Register document
+      required:
+        - assetList
+      properties:
+        assetList:
+          type: array
+          items:
+            type: object
+            properties:
+              assetID:
+                type: string
+                example: "MACH-001A"
+              originalCost:
+                type: number
+                example: 120000.0
+              residualValue:
+                type: number
+                example: 12000.0
+              usefulLife_years:
+                type: number
+                example: 10
+              purchaseDate:
+                type: string
+                format: date
+
+    PayrollExpense:
+      type: object
+      description: Payroll Expense document
+      required:
+        - employeeDetails
+        - grossPay
+      properties:
+        employeeDetails:
+          type: object
+          properties:
+            employeeId:
+              type: string
+            name:
+              type: string
+        grossPay:
+          type: number
+          example: 20000.0
+        deductions:
+          type: number
+        netPay:
+          type: number
+
+    OverheadReport:
+      type: object
+      description: Corporate Overhead Report
+      required:
+        - reportTitle
+        - totalOverheadCost
+      properties:
+        reportTitle:
+          type: string
+          enum: ["Corporate Overhead Report"]
+        period:
+          type: string
+          example: "2025-01"
+        totalOverheadCost:
+          type: number
+          example: 50000.0
+        allocations:
+          type: array
+          items:
+            type: object
+
+tags:
+  - name: TEE
+    description: Trusted Execution Environment (TEE) KPI computation endpoints

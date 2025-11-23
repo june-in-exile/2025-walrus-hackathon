@@ -1,20 +1,24 @@
 'use client';
 
+import { useState } from 'react';
 import { useCurrentAccount } from '@mysten/dapp-kit';
-import { useRole } from '@/src/frontend/contexts/RoleContext';
 import { useDeals, useDealStats } from '@/src/frontend/hooks/useDeals';
 import { DealCard } from '@/src/frontend/components/features/deals/DealCard';
 import { WalletButton } from '@/src/frontend/components/wallet/WalletButton';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, Briefcase, TrendingUp, CheckCircle2, Wallet, Plus } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { Loader2, Briefcase, TrendingUp, CheckCircle2, Wallet, Plus, ShoppingCart, Store, Shield } from 'lucide-react';
 import Link from 'next/link';
+
+type ViewRole = 'buyer' | 'seller' | 'auditor';
 
 export default function DealsPage() {
   const currentAccount = useCurrentAccount();
-  const { currentRole } = useRole();
-  const { data: dealsData, isLoading, error } = useDeals('buyer');
-  const stats = useDealStats('buyer');
+  const [viewRole, setViewRole] = useState<ViewRole>('buyer');
+  const { data: dealsData, isLoading, error } = useDeals(viewRole);
+  const stats = useDealStats(viewRole);
 
   // If wallet not connected, show connect wallet prompt
   if (!currentAccount) {
@@ -75,18 +79,36 @@ export default function DealsPage() {
                 Manage your earn-out agreements and track settlements
               </p>
             </div>
-            {currentRole === 'buyer' && (
-              <Button asChild size="lg">
-                <Link href="/deals/create">
-                  <Plus className="mr-2 h-5 w-5" />
-                  Create New Deal
-                </Link>
-              </Button>
-            )}
+            <Button asChild size="lg">
+              <Link href="/deals/create">
+                <Plus className="mr-2 h-5 w-5" />
+                Create New Deal
+              </Link>
+            </Button>
+          </div>
+
+          {/* View Role Selector */}
+          <div className="mt-8">
+            <Tabs value={viewRole} onValueChange={(value) => setViewRole(value as ViewRole)}>
+              <TabsList>
+                <TabsTrigger value="buyer" className="gap-2">
+                  <ShoppingCart className="h-4 w-4" />
+                  As Buyer
+                </TabsTrigger>
+                <TabsTrigger value="seller" className="gap-2">
+                  <Store className="h-4 w-4" />
+                  As Seller
+                </TabsTrigger>
+                <TabsTrigger value="auditor" className="gap-2">
+                  <Shield className="h-4 w-4" />
+                  As Auditor
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
 
           {/* Stats Cards */}
-          <div className="grid gap-4 md:grid-cols-3 mt-8">
+          <div className="grid gap-4 md:grid-cols-3 mt-6">
             <StatsCard
               icon={<Briefcase className="h-5 w-5" />}
               label="Total Deals"
@@ -131,26 +153,30 @@ export default function DealsPage() {
                   <Briefcase className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
                   <h3 className="text-2xl font-semibold mb-2">No deals yet</h3>
                   <p className="text-muted-foreground mb-6">
-                    {currentRole === 'buyer'
-                      ? 'Get started by creating your first earn-out deal'
-                      : 'No deals available to view'}
+                    Get started by creating your first earn-out deal
                   </p>
-                  {currentRole === 'buyer' && (
-                    <Button asChild size="lg">
-                      <Link href="/deals/create">
-                        <Plus className="mr-2 h-5 w-5" />
-                        Create Your First Deal
-                      </Link>
-                    </Button>
-                  )}
+                  <Button asChild size="lg">
+                    <Link href="/deals/create">
+                      <Plus className="mr-2 h-5 w-5" />
+                      Create Your First Deal
+                    </Link>
+                  </Button>
                 </div>
               </div>
             ) : (
               <>
                 <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-2xl font-semibold">
-                    All Deals ({dealsData.total})
-                  </h2>
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-2xl font-semibold">
+                      All Deals ({dealsData.total})
+                    </h2>
+                    <Badge variant="outline" className="capitalize">
+                      {viewRole === 'buyer' && <ShoppingCart className="h-3 w-3 mr-1" />}
+                      {viewRole === 'seller' && <Store className="h-3 w-3 mr-1" />}
+                      {viewRole === 'auditor' && <Shield className="h-3 w-3 mr-1" />}
+                      {viewRole}
+                    </Badge>
+                  </div>
                 </div>
 
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">

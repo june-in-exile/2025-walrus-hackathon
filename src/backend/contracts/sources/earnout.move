@@ -2,16 +2,13 @@ module contracts::earnout {
     use sui::event;
     use sui::clock::{Self, Clock};
     use std::string::{String};
-    use sui::ed25519;
     use sui::coin::{Self, Coin};
     use sui::sui::SUI;
-    use sui::hash;
 
     // --- Error Codes ---
 
     const ENotBuyer: u64 = 0;
     const ENotAuditor: u64 = 1;
-    const EInvalidSignature: u64 = 2;
     const EAlreadyAudited: u64 = 3;
     const ENotAuthorized: u64 = 4;
     const EMismatchLength: u64 = 5;
@@ -354,12 +351,16 @@ module contracts::earnout {
 
     // --- Data Audit Functions ---
 
-    /// Auditor audits a data record with signature verification
+    /// Auditor audits a data record
+    ///
+    /// SIMPLIFIED VERSION: No off-chain signature verification
+    /// The transaction itself serves as proof of auditor's intent:
+    /// - Only the auditor can call this function (checked via deal.auditor)
+    /// - The wallet signature on the transaction proves authenticity
+    /// - This is more gas-efficient and avoids Ed25519/Blake2b compatibility issues
     public fun audit_data(
         deal: &Deal,
         audit_record: &mut DataAuditRecord,
-        signature: vector<u8>,
-        public_key: vector<u8>,
         clock: &Clock,
         ctx: &mut TxContext
     ) {
@@ -368,33 +369,6 @@ module contracts::earnout {
         assert!(sender == deal.auditor, ENotAuditor);
         assert!(!audit_record.audited, EAlreadyAudited);
         assert!(audit_record.deal_id == object::id(deal), ENotAuthorized);
-
-        // Build the message: "AUDIT:{data_id}"
-        let mut message = vector::empty<u8>();
-        vector::append(&mut message, b"AUDIT:");
-        vector::append(&mut message, *audit_record.data_id.as_bytes());
-
-        // Sui PersonalMessage signing process:
-        // 1. Wallet builds: intent_message = [3, 0, 0] + raw_message
-        // 2. Wallet computes: hash = Blake2b-256(intent_message) -> 32 bytes
-        // 3. Wallet performs: signature = Ed25519_sign(private_key, hash)
-        //
-        // The wallet signs the 32-byte HASH, not the original message.
-        // Therefore, ed25519_verify must receive the same 32-byte hash as input.
-        //
-        // Build the same intent message the wallet used:
-        let mut intent_message = vector::empty<u8>();
-        vector::push_back(&mut intent_message, 3u8);  // PersonalMessage scope
-        vector::push_back(&mut intent_message, 0u8);  // V0 version
-        vector::push_back(&mut intent_message, 0u8);  // Sui app_id
-        vector::append(&mut intent_message, message);
-
-        // Compute the same hash the wallet used before signing
-        let message_hash = hash::blake2b256(&intent_message);
-
-        // Verify the Ed25519 signature against the hash (the actual signed data)
-        let is_valid = ed25519::ed25519_verify(&signature, &public_key, &message_hash);
-        assert!(is_valid, EInvalidSignature);
 
         // Update audit record
         let timestamp = clock::timestamp_ms(clock);
@@ -441,17 +415,99 @@ module contracts::earnout {
 
     // --- Settlement Functions ---
 
-    /// Verify Nautilus TEE attestation (simplified for now)
+    /// Verify Nautilus TEE attestation
+    ///
+    /// Attestation format (144 bytes total):
+    /// - kpi_value: u64 (8 bytes, little-endian)
+    /// - computation_hash: 32 bytes (SHA-256 hash of input documents)
+    /// - timestamp: u64 (8 bytes, little-endian, Unix timestamp in milliseconds)
+    /// - tee_public_key: 32 bytes (Ed25519 public key)
+    /// - signature: 64 bytes (Ed25519 signature)
+    ///
+    /// Verification steps:
+    /// 1. Check attestation length (must be 144 bytes)
+    /// 2. Extract and verify kpi_value matches expected_kpi_value
+    /// 3. Extract timestamp and verify it's recent (within 1 hour)
+    /// 4. Extract TEE public key
+    /// 5. Verify Ed25519 signature over (kpi_value || computation_hash || timestamp)
+    ///
+    /// NOTE: This is a simplified version without TEE registry.
+    /// For production, add TEERegistry to whitelist trusted TEE public keys.
     public fun verify_nautilus_attestation(
         attestation: &vector<u8>,
-        _expected_kpi_value: u64,
+        expected_kpi_value: u64,
     ): bool {
+        use sui::ed25519;
+
+        // 1. Check attestation length
         let attestation_length = vector::length(attestation);
-        if (attestation_length == 0) {
+        if (attestation_length != 144) {
             return false
         };
-        // TODO: Implement actual TEE attestation verification
-        true
+
+        // 2. Extract kpi_value (bytes 0-7, little-endian)
+        let kpi_bytes = extract_bytes(attestation, 0, 8);
+        let kpi_value = bytes_to_u64_le(&kpi_bytes);
+
+        if (kpi_value != expected_kpi_value) {
+            return false
+        };
+
+        // 3. Extract computation_hash (bytes 8-39)
+        let computation_hash = extract_bytes(attestation, 8, 32);
+
+        // 4. Extract timestamp (bytes 40-47, little-endian)
+        let timestamp_bytes = extract_bytes(attestation, 40, 8);
+        let _timestamp = bytes_to_u64_le(&timestamp_bytes);
+
+        // TODO: Add timestamp validation (check if recent, e.g., within 1 hour)
+        // This requires passing current time from Clock object
+        // For now, we skip this check
+
+        // 5. Extract tee_public_key (bytes 48-79)
+        let tee_public_key = extract_bytes(attestation, 48, 32);
+
+        // TODO: Verify TEE public key is in trusted registry
+        // For MVP, we accept any TEE key
+
+        // 6. Extract signature (bytes 80-143)
+        let signature = extract_bytes(attestation, 80, 64);
+
+        // 7. Build message for signature verification
+        // Message = kpi_value || computation_hash || timestamp
+        let mut message = vector::empty<u8>();
+        vector::append(&mut message, kpi_bytes);
+        vector::append(&mut message, computation_hash);
+        vector::append(&mut message, timestamp_bytes);
+
+        // 8. Verify Ed25519 signature
+        let is_valid = ed25519::ed25519_verify(&signature, &tee_public_key, &message);
+
+        is_valid
+    }
+
+    /// Helper function to extract a slice of bytes from a vector
+    fun extract_bytes(source: &vector<u8>, start: u64, length: u64): vector<u8> {
+        let mut result = vector::empty<u8>();
+        let mut i = 0;
+        while (i < length) {
+            let byte = *vector::borrow(source, start + i);
+            vector::push_back(&mut result, byte);
+            i = i + 1;
+        };
+        result
+    }
+
+    /// Helper function to convert 8 bytes (little-endian) to u64
+    fun bytes_to_u64_le(bytes: &vector<u8>): u64 {
+        let mut result: u64 = 0;
+        let mut i = 0;
+        while (i < 8) {
+            let byte = (*vector::borrow(bytes, i) as u64);
+            result = result + (byte << ((i * 8) as u8));
+            i = i + 1;
+        };
+        result
     }
 
     /// Submit cumulative KPI result and execute settlement.

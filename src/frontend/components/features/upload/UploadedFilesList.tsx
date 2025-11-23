@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { FileText, Trash2, Download, Loader2, Copy, Check } from 'lucide-react';
+import { FileText, Trash2, Download, Loader2, Copy, Check, CheckCircle2, Clock } from 'lucide-react';
 import { useSuiClient, useCurrentAccount, useSignPersonalMessage } from '@mysten/dapp-kit';
 import { decryptData } from '@/src/frontend/lib/seal';
 
@@ -14,6 +14,12 @@ interface UploadedFile {
   size: number;
   uploadedAt: Date;
   blobId?: string;
+  auditStatus?: {
+    audited: boolean;
+    auditor?: string;
+    auditTimestamp?: number;
+    auditRecordId?: string;
+  };
 }
 
 interface UploadedFilesListProps {
@@ -197,6 +203,19 @@ export function UploadedFilesList({
                       <Badge variant="outline" className="text-xs">
                         {file.customDataType || formatDataType(file.dataType)}
                       </Badge>
+                      {file.auditStatus && (
+                        file.auditStatus.audited ? (
+                          <Badge variant="default" className="text-xs bg-green-600 hover:bg-green-700">
+                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                            Audited
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-xs">
+                            <Clock className="h-3 w-3 mr-1" />
+                            Pending Audit
+                          </Badge>
+                        )
+                      )}
                       <span className="text-xs text-muted-foreground">
                         {formatFileSize(file.size)}
                       </span>

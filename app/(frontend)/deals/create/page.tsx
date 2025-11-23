@@ -6,9 +6,7 @@ import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useCurrentAccount, useSignPersonalMessage } from '@mysten/dapp-kit';
-import { useRole } from '@/src/frontend/contexts/RoleContext';
 import { useCreateDeal } from '@/src/frontend/hooks/useCreateDeal';
-import { RoleAccessMessage } from '@/src/frontend/components/common/RoleAccessMessage';
 import { WalletButton } from '@/src/frontend/components/wallet/WalletButton';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -47,7 +45,6 @@ type CreateDealFormData = z.infer<typeof createDealSchema>;
 
 export default function CreateDealPage() {
   const router = useRouter();
-  const { currentRole } = useRole();
   const currentAccount = useCurrentAccount();
   const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
   const { createDeal, isCreating } = useCreateDeal();
@@ -79,25 +76,6 @@ export default function CreateDealPage() {
     control,
     name: 'assets',
   });
-
-  // Role-based access control: Only Buyer can create deals
-  if (currentRole !== 'buyer') {
-    return (
-      <div className="container mx-auto px-4 py-8 max-w-7xl">
-        <Button asChild variant="ghost" size="sm" className="mb-4">
-          <Link href="/deals">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Deals
-          </Link>
-        </Button>
-        <RoleAccessMessage
-          allowedRole="buyer"
-          currentRole={currentRole}
-          featureName="Deal creation"
-        />
-      </div>
-    );
-  }
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

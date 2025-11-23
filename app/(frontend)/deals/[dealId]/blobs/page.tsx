@@ -32,6 +32,12 @@ interface BlobReference {
     customDataType?: string;
     periodId?: string;
   };
+  auditStatus?: {
+    audited: boolean;
+    auditor?: string;
+    auditTimestamp?: number;
+    auditRecordId?: string;
+  };
 }
 
 export default function DealBlobsPage() {
@@ -162,6 +168,7 @@ export default function DealBlobsPage() {
             // This should be fetched if needed, or a default value used.
             uploadedAt: new Date(blob.uploadedAt),
             blobId: blob.blobId,
+            auditStatus: blob.auditStatus,
           }))}
           dealId={dealId}
         />

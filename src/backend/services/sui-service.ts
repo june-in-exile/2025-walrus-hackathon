@@ -789,6 +789,10 @@ export class SuiService {
     periodCount: number;
     createdAt?: string;
   }>> {
+
+    console.log("userAddress:", userAddress);
+    console.log("roleFilter:", roleFilter);
+
     try {
       if (debugConfig.sui) {
         console.log('Querying deals for user:', userAddress);

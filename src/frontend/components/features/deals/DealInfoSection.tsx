@@ -1,11 +1,13 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, DollarSign, Users, FileText, TrendingUp, Target, Percent, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Calendar, DollarSign, TrendingUp, Target, Percent, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
 import type { DashboardResponseDealInfo } from '@/src/frontend/lib/api-client';
-import type { DealWithExtendedFields, PeriodWithKPI } from '@/src/frontend/lib/mock-data';
+import type { PeriodWithKPI } from '@/src/frontend/lib/mock-data';
 import { mockDeals } from '@/src/frontend/lib/mock-data';
 import { calculateTotalMonthlyDepreciation } from '@/src/shared/types/asset';
 import { useState } from 'react';
+import { KPICalculateButton } from '@/src/frontend/components/features/deals/KPICalculateButton';
+import { useCurrentAccount } from '@mysten/dapp-kit';
 
 interface DealInfoSectionProps {
   dealInfo: DashboardResponseDealInfo & {
@@ -19,6 +21,22 @@ interface DealInfoSectionProps {
 }
 
 export function DealInfoSection({ dealInfo }: DealInfoSectionProps) {
+  const currentAccount = useCurrentAccount();
+
+  // Check if current user is the seller
+  const isSeller =
+    currentAccount?.address &&
+    dealInfo.roles.seller &&
+    currentAccount.address.toLowerCase() === dealInfo.roles.seller.toLowerCase();
+
+  // Debug logging
+  console.log('🔍 DealInfoSection Debug:', {
+    currentAddress: currentAccount?.address,
+    sellerAddress: dealInfo.roles.seller,
+    isSeller,
+    dealId: dealInfo.dealId,
+  });
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active':
@@ -102,6 +120,16 @@ export function DealInfoSection({ dealInfo }: DealInfoSectionProps) {
   const kpiTarget = deal?.kpiTargetAmount || 900000;
   const kpiAchieved = periods.some(p => p.kpiAchieved);
   const kpiProgress = cumulativeData.netProfit / kpiTarget;
+
+  // Debug KPI button visibility
+  console.log('🎯 KPI Button Visibility Check:', {
+    isSeller,
+    kpiAchieved,
+    shouldShowButton: isSeller && !kpiAchieved,
+    periodsCount: periods.length,
+    cumulativeNetProfit: cumulativeData.netProfit,
+    kpiTarget,
+  });
 
   // Find the period where KPI was achieved (if any)
   const achievedPeriod = periods.find(p => p.kpiAchieved);
@@ -364,6 +392,25 @@ export function DealInfoSection({ dealInfo }: DealInfoSectionProps) {
               />
             </div>
           </div>
+
+          {/* Calculate KPI Button (Seller Only) */}
+          {isSeller && !kpiAchieved ? (
+            <div className="pt-2">
+              <KPICalculateButton
+                dealId={dealInfo.dealId}
+                onCalculationComplete={(result) => {
+                  console.log('KPI Calculation completed:', result);
+                  // TODO: Optionally refresh dashboard data or show notification
+                }}
+              />
+            </div>
+          ) : (
+            <div className="pt-2 text-xs text-muted-foreground">
+              {/* Debug info - remove in production */}
+              {!isSeller && '(Not seller)'}
+              {isSeller && kpiAchieved && '(KPI already achieved)'}
+            </div>
+          )}
 
           {/* Settlement Info (if achieved) */}
           {kpiAchieved && settlement && (

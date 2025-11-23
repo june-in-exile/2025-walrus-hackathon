@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useCurrentAccount, useSuiClient, useSignPersonalMessage } from '@mysten/dapp-kit';
-import { useRole } from '@/src/frontend/contexts/RoleContext';
+import { useDealRole } from '@/src/frontend/hooks/useDealRole';
 import { useAuditRecords } from '@/src/frontend/hooks/useAuditRecords';
 import { useAuditData } from '@/src/frontend/hooks/useAuditData';
 import { WalletButton } from '@/src/frontend/components/wallet/WalletButton';
@@ -30,9 +30,16 @@ export default function DataAuditPage() {
   const params = useParams();
   const router = useRouter();
   const currentAccount = useCurrentAccount();
-  const { currentRole } = useRole();
   const dealId = params.dealId as string;
+  const currentRole = useDealRole(dealId);
   const periodId = params.periodId as string;
+
+  // Redirect buyer/seller to upload page
+  useEffect(() => {
+    if (currentRole === 'buyer' || currentRole === 'seller') {
+      router.replace(`/deals/${dealId}/periods/${periodId}/upload`);
+    }
+  }, [currentRole, dealId, periodId, router]);
 
   const suiClient = useSuiClient();
   const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
@@ -399,7 +406,7 @@ export default function DataAuditPage() {
                               ) : (
                                 <>
                                   <Shield className="mr-2 h-4 w-4" />
-                                  Audit & Sign
+                                  Audit
                                 </>
                               )}
                             </Button>

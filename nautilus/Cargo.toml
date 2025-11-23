@@ -1,0 +1,25 @@
+[package]
+name = "kpi_calculator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+ed25519-dalek = "2.1"
+rand = "0.8"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "kpi_calculator_demo"
+path = "src/main.rs"
+required-features = []
+
+[profile.release]
+opt-level = "z"     # Optimize for size
+lto = true          # Enable Link Time Optimization
+codegen-units = 1   # Reduce code generation units
+strip = true        # Strip symbols

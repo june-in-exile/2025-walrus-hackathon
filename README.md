@@ -1,4 +1,4 @@
-# M&A Earn-out Protocol
+# Decentralized M&A Earn-out Management Platform
 
 <div align="center">
 

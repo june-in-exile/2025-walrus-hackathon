@@ -1,71 +1,364 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Decentralized M&A Earn-out Management Platform
 
-## Project Structure
+<div align="center">
 
-This project follows a **Next.js Hybrid Architecture** pattern with clear frontend/backend separation:
+![M&A Logo](./public/M&A%20Logo.png)
+
+**A decentralized, transparent M&A earn-out management platform powered by Sui, Walrus, and Seal**
+
+[Live Demo](https://ma-earnout-2025walrushackathon.vercel.app) | [Video Demo](#) | [Documentation](./docs)
+
+*Built for [2025 Walrus Hackathon](https://walrus.site)*
+
+</div>
+
+---
+
+## 🎯 The Problem
+
+In traditional M&A (Mergers & Acquisitions) transactions, **earn-out agreements** are common but problematic:
+
+- **Opacity**: Sellers can't verify if buyers are reporting revenue honestly
+- **Disputes**: 70% of earn-outs end in litigation over KPI calculations
+- **Slow Settlement**: Manual audits take months, delaying payments to sellers
+- **High Costs**: Legal and auditing fees consume 10-15% of earn-out value
+
+**Example**: A $30M earn-out payment contingent on $900K revenue often results in:
+- Buyer provides opaque financial reports
+- Seller disputes the calculations
+- 6-12 months of legal negotiations
+- $3-4M in legal and auditing costs
+
+## 💡 Our Solution
+
+A **trustless earn-out protocol** where:
+
+1. **Buyers upload encrypted financial documents to Walrus** (invoices, payroll, expense reports)
+2. **Smart contracts on Sui** enforce role-based access (buyer, seller, auditor)
+3. **Auditors verify data** stored on Walrus without central authority
+4. **KPI calculations run in Nautilus TEE** with cryptographic attestation
+5. **Automatic settlement** when KPIs are met - no lawyers needed
+
+### Why Walrus?
+
+**Walrus is central to our architecture**, not peripheral:
+
+| Feature | Traditional Solution | Our Solution with Walrus |
+|---------|---------------------|--------------------------|
+| **Data Storage** | Centralized servers (AWS/Azure) - single point of failure | Decentralized storage on Walrus - censorship-resistant |
+| **Data Privacy** | Encrypted at rest, but cloud provider has access | Seal encryption - only authorized roles can decrypt |
+| **Data Integrity** | Trust the database - no proof of tampering | Immutable blob IDs registered on-chain |
+| **Availability** | 99.9% SLA, subject to provider policies | Byzantine fault-tolerant storage network |
+| **Censorship** | Can be seized, blocked, or deleted | No single entity controls access |
+
+**Walrus enables**:
+- **Decentralized document repository** that no single party controls
+- **Verifiable data integrity** via on-chain blob ID registration
+- **Scalable storage** for large financial datasets (reports, invoices, contracts)
+- **Cost efficiency** compared to on-chain storage (1000x cheaper)
+
+## 🏗️ Architecture
 
 ```
-/
-├── app/
-│   ├── (frontend)/         # Route group - Frontend pages
-│   │   ├── page.tsx       # Homepage
-│   │   └── ...            # Other frontend routes
-│   │
-│   ├── api/               # Backend API routes
-│   │   ├── v1/           # API version 1
-│   │   │   └── ...       # Other API endpoints
-│   │   ├── health/       # Health check endpoint
-│   │   └── openapi/      # OpenAPI specification endpoint
-│   │
-│   └── api-docs/          # API documentation page (Swagger UI)
-│
-├── src/
-│   ├── backend/           # Backend: Controllers → Services → Repositories
-│   ├── frontend/          # Frontend: Components, Hooks, Lib
-│   └── shared/            # Shared: Types, Validators, Utils
-│
-├── docs/                  # OpenAPI specs organized by version
-└── public/               # Static assets
+┌─────────────────────────────────────────────────────────────────┐
+│                        Frontend (Next.js)                       │
+│                    Sui Wallet Integration                        │
+└──────────────┬────────────────────────────────┬─────────────────┘
+               │                                │
+               ▼                                ▼
+    ┌──────────────────┐              ┌──────────────────┐
+    │  Sui Blockchain  │              │ Walrus Storage   │
+    │                  │              │                  │
+    │ • Deal Contracts │◄─────────────┤ • Financial Docs │
+    │ • Access Control │   Blob IDs   │ • Seal Encrypted │
+    │ • KPI Registry   │              │ • Decentralized  │
+    └──────────────────┘              └──────────────────┘
+               │                                ▲
+               │                                │
+               ▼                                │
+    ┌──────────────────┐              ┌──────────────────┐
+    │  Nautilus TEE    │              │   Seal Service   │
+    │                  │              │                  │
+    │ • KPI Calculator │──────────────► • Role-based     │
+    │ • Ed25519 Signer │   Decrypt    │   Encryption     │
+    │ • Attestation    │              │ • Policy Control │
+    └──────────────────┘              └──────────────────┘
 ```
 
-> 📖 **For detailed development guidelines**, see [DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md)
->
-> This includes:
-> - Directory structure and responsibilities
-> - Naming conventions
-> - Backend layered architecture (Controller-Service-Repository pattern)
-> - Error handling strategies
-> - API versioning guidelines
-> - **OpenAPI code generation** (auto-generate type-safe clients)
-> - Testing strategies
+### Data Flow
 
-## Getting Started
+1. **Deal Creation**: Buyer creates on-chain deal with seller and auditor addresses
+2. **Data Upload**: Buyer encrypts financial docs with Seal → uploads to Walrus → registers blob ID on Sui
+3. **Verification**: Auditor retrieves encrypted blob from Walrus → decrypts with Seal → verifies data
+4. **KPI Calculation**: TEE downloads data from Walrus → computes KPI → generates cryptographic attestation
+5. **Settlement**: Smart contract verifies attestation → transfers funds to seller automatically
 
-First, run the development server:
+## ✨ Key Features
+
+### For Buyers
+- **Transparent Process**: On-chain proof of all financial submissions
+- **Reduced Legal Costs**: Automated KPI verification eliminates disputes
+- **Flexible Reporting**: Upload revenue, expenses, and payroll data monthly
+
+### For Sellers
+- **Real-time Monitoring**: Track KPI progress against targets
+- **Trustless Verification**: Decrypt financial docs anytime without buyer permission
+- **Guaranteed Payment**: Smart contract escrow ensures funds are available
+
+### For Auditors
+- **Immutable Audit Trail**: All data submissions timestamped on-chain
+- **Efficient Workflow**: Download encrypted docs from Walrus, verify, attest KPI
+- **Cryptographic Proof**: Sign attestations with wallet key
+
+## 🛠️ Tech Stack
+
+| Component | Technology | Purpose |
+|-----------|-----------|---------|
+| **Blockchain** | Sui Network | Smart contracts, access control, KPI registry |
+| **Storage** | **Walrus Protocol** | Decentralized storage for financial documents |
+| **Encryption** | Mysten Seal | Role-based access control for sensitive data |
+| **TEE** | Nautilus | Trustless KPI computation with attestation |
+| **Smart Contracts** | Sui Move | On-chain deal logic and settlement |
+| **Frontend** | Next.js 16 + React 19 | Web application with wallet integration |
+| **Wallet** | @mysten/dapp-kit | Sui wallet connection and transaction signing |
+| **UI** | Tailwind + shadcn/ui | Responsive, accessible components |
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Node.js 20+
+- Sui Wallet (Sui Wallet Extension or zkLogin)
+- Sui Testnet tokens ([faucet](https://discord.com/channels/916379725201563759/971488439931392130))
+
+### Installation
 
 ```bash
+# Clone the repository
+git clone https://github.com/yourusername/2025-walrus-hackathon.git
+cd 2025-walrus-hackathon
+
+# Install dependencies
 npm install
 
+# Configure environment variables
+cp .env.example .env.local
+# Edit .env.local with your configuration
+
+# Run development server
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to see the application.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Environment Configuration
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Key variables in `.env.local`:
 
-## Learn More
+```bash
+# Sui Network
+SUI_NETWORK=testnet
+EARNOUT_PACKAGE_ID=
+NEXT_PUBLIC_EARNOUT_PACKAGE_ID=
 
-To learn more about Next.js, take a look at the following resources:
+# Walrus Storage
+WALRUS_AGGREGATOR_URL=https://aggregator.walrus-testnet.walrus.space
+WALRUS_PUBLISHER_URL=https://publisher.walrus-testnet.walrus.space
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# Seal Encryption
+SEAL_KEY_SERVER_OBJECT_IDS=
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+See `.env.example` for full configuration options.
 
-## Deploy on Vercel
+## 📖 Usage Example
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 1. Create an Earn-out Deal
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```typescript
+// Buyer connects wallet and creates deal
+const deal = await createDeal({
+  name: "TechCorp Acquisition 2025",
+  seller: "0xSELLER_ADDRESS",
+  auditor: "0xAUDITOR_ADDRESS",
+  earnoutPeriodYears: 3,
+  kpiTargetAmount: 900000, // $900K revenue target
+});
+```
+
+### 2. Upload Financial Data to Walrus
+
+```typescript
+// Buyer uploads encrypted invoice
+const result = await uploadFile(invoiceFile, {
+  dealId: deal.id,
+  periodId: "2025-Q1",
+  dataType: "sales_invoice",
+  encryptionMode: "client_encrypted", // Seal encryption
+});
+
+// Walrus blob ID registered on-chain
+console.log("Blob ID:", result.blobId);
+```
+
+### 3. Auditor Verifies Data
+
+```typescript
+// Auditor retrieves and decrypts from Walrus
+const blob = await fetchBlobFromWalrus(result.blobId);
+const decrypted = await sealDecrypt(blob, auditorWallet);
+
+// Verify calculations and attest KPI
+await attestKPI({
+  dealId: deal.id,
+  periodId: "2025-Q1",
+  verifiedValue: 250000, // Verified revenue
+  approve: true,
+});
+```
+
+### 4. Automatic Settlement
+
+```typescript
+// If KPI target met, smart contract transfers funds
+// No manual intervention required
+```
+
+## 🏆 Walrus Integration Highlights
+
+### 1. Decentralized Document Repository
+
+Instead of storing financial documents on centralized servers, we use **Walrus as the single source of truth**:
+
+```typescript
+// Upload to Walrus
+const response = await fetch('/api/v1/walrus/upload', {
+  method: 'POST',
+  body: formData,
+});
+const { blobId } = await response.json();
+
+// Register blob ID on Sui blockchain
+tx.moveCall({
+  target: `${packageId}::earnout::add_walrus_blob`,
+  arguments: [dealId, periodIndex, blobId, dataType, clock],
+});
+```
+
+**Benefits**:
+- **Immutable references**: Blob IDs can't be changed after registration
+- **No single point of failure**: Data survives even if original uploader disappears
+- **Censorship resistance**: No entity can delete or block access to data
+
+### 2. Seal + Walrus Integration
+
+We combine **Seal encryption** with **Walrus storage** for privacy:
+
+```typescript
+// Encrypt with Seal policy (buyer, seller, auditor can decrypt)
+const encrypted = await sealEncrypt(fileData, {
+  keyServerIds: SEAL_KEY_SERVERS,
+  policy: {
+    allowedAddresses: [buyer, seller, auditor],
+  },
+});
+
+// Upload encrypted blob to Walrus
+const blobId = await walrusUpload(encrypted);
+```
+
+**Result**: Financial data is stored publicly on Walrus, but only authorized parties can decrypt it.
+
+### 3. TEE Attestation with Walrus Data
+
+Nautilus TEE retrieves data from Walrus for tamper-proof KPI calculation:
+
+```typescript
+// TEE fetches encrypted data from Walrus
+const blobs = await Promise.all(
+  blobIds.map(id => fetchFromWalrus(id))
+);
+
+// TEE decrypts and computes KPI
+const kpi = computeKPI(blobs);
+
+// TEE signs attestation
+const attestation = sign(kpi, teePrivateKey); // 144 bytes
+```
+
+**Guarantee**: KPI was computed from the exact data stored on Walrus, verified by TEE signature.
+
+## 📚 Project Structure
+
+```
+├── app/                    # Next.js App Router
+│   ├── (frontend)/        # User-facing pages
+│   └── api/v1/            # REST API endpoints
+│
+├── src/
+│   ├── backend/
+│   │   ├── contracts/     # Sui Move smart contracts
+│   │   └── services/      # Business logic (Walrus, Seal, Sui)
+│   ├── frontend/
+│   │   ├── components/    # React UI components
+│   │   └── hooks/         # Custom hooks for blockchain/Walrus
+│   └── shared/            # Shared types and utilities
+│
+├── nautilus/              # Rust TEE code for KPI calculation
+└── docs/                  # OpenAPI specifications
+```
+
+## 🧪 Smart Contract
+
+Deployed on **Sui Testnet**:
+- **Package ID**: ``
+- **Module**: `earnout`
+
+Key functions:
+- `create_deal`: Initialize earn-out agreement
+- `add_walrus_blob`: Register Walrus blob ID on-chain
+- `propose_kpi`: Buyer proposes KPI value
+- `attest_kpi`: Auditor verifies and approves KPI
+- `execute_settlement`: Transfer funds based on attested KPI
+
+See [Contract README](./src/backend/contracts/README.md) for deployment guide.
+
+## 🎥 Demo
+
+> **[Live Application](https://ma-earnout-2025walrushackathon.vercel.app)**
+
+1. Connect Sui wallet (testnet)
+2. Create a new earn-out deal
+3. Upload sample financial data (encrypted with Seal, stored on Walrus)
+4. View dashboard with KPI tracking
+5. Execute settlement when KPI target is met
+
+## 🔮 Future Enhancements
+
+- **Multi-TEE Consensus**: Require 2-of-3 TEE nodes to agree on KPI
+- **Advanced KPI Formulas**: Support EBITDA, gross margin, custom metrics
+- **Dispute Resolution**: On-chain arbitration mechanism
+- **Mobile App**: React Native app for on-the-go monitoring
+- **Analytics Dashboard**: Historical KPI trends and forecasting
+
+## 📄 License
+
+MIT License - see [LICENSE](./LICENSE) for details
+
+## 🙏 Acknowledgments
+
+Built with:
+- [Walrus Protocol](https://walrus.site) - Decentralized storage
+- [Sui Network](https://sui.io) - High-performance blockchain
+- [Mysten Seal](https://github.com/MystenLabs/seal) - Role-based encryption
+- [Nautilus](https://nautilus.network) - Trusted Execution Environment
+
+---
+
+<div align="center">
+
+**Built for 2025 Walrus Hackathon**
+
+[Report Bug](https://github.com/yourusername/2025-walrus-hackathon/issues) | [Request Feature](https://github.com/yourusername/2025-walrus-hackathon/issues)
+
+</div>

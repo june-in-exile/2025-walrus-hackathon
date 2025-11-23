@@ -9,13 +9,16 @@
  */
 
 import { useState, useCallback } from 'react';
+import { useCurrentAccount, useSuiClient, useSignPersonalMessage } from '@mysten/dapp-kit';
 import { walrusBlobService, type DownloadProgress } from '@/src/frontend/services/walrus-blob-service';
+import { decryptData } from '@/src/frontend/lib/seal';
 import type { KPIResultWithAttestation } from '@/src/frontend/services/tee-service';
 
 export interface KPICalculationProgress {
-  phase: 'idle' | 'downloading' | 'calculating' | 'completed' | 'error';
+  phase: 'idle' | 'downloading' | 'decrypting' | 'calculating' | 'completed' | 'error';
   message: string;
   downloadProgress?: DownloadProgress;
+  decryptProgress?: { current: number; total: number };
   documentsFound?: number;
 }
 
@@ -34,6 +37,9 @@ export interface UseKPICalculationReturn {
 }
 
 export function useKPICalculation(): UseKPICalculationReturn {
+  const currentAccount = useCurrentAccount();
+  const suiClient = useSuiClient();
+  const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
   const [isCalculating, setIsCalculating] = useState(false);
   const [progress, setProgress] = useState<KPICalculationProgress>({
     phase: 'idle',
@@ -60,6 +66,13 @@ export function useKPICalculation(): UseKPICalculationReturn {
       setError(null);
       setResult(null);
 
+      // Check if wallet is connected
+      if (!currentAccount?.address) {
+        throw new Error('Please connect your wallet first');
+      }
+
+      const userAddress = currentAccount.address;
+
       // Phase 1: Download blobs from Walrus
       setProgress({
         phase: 'downloading',
@@ -83,10 +96,11 @@ export function useKPICalculation(): UseKPICalculationReturn {
         },
       });
 
-      // Download and process blobs (filters for JSON automatically)
-      const jsonBlobs = await walrusBlobService.downloadAndProcessBlobs(
+      // Download encrypted blobs
+      const encryptedBlobs = await walrusBlobService.downloadAndProcessBlobs(
         dealId,
         allBlobs,
+        userAddress,
         (downloadProgress) => {
           setProgress({
             phase: 'downloading',
@@ -96,25 +110,74 @@ export function useKPICalculation(): UseKPICalculationReturn {
         }
       );
 
-      if (jsonBlobs.length === 0) {
-        throw new Error('No valid JSON documents found in Walrus blobs');
+      if (encryptedBlobs.length === 0) {
+        throw new Error('No blobs downloaded from Walrus');
+      }
+
+      // Phase 2: Decrypt blobs using Seal
+      setProgress({
+        phase: 'decrypting',
+        message: 'Decrypting blobs with Seal...',
+        decryptProgress: { current: 0, total: encryptedBlobs.length },
+      });
+
+      const packageId = process.env.NEXT_PUBLIC_EARNOUT_PACKAGE_ID;
+      if (!packageId) {
+        throw new Error('NEXT_PUBLIC_EARNOUT_PACKAGE_ID is not configured');
+      }
+
+      const documents: any[] = [];
+
+      for (let i = 0; i < encryptedBlobs.length; i++) {
+        const blob = encryptedBlobs[i];
+
+        setProgress({
+          phase: 'decrypting',
+          message: `Decrypting blob ${i + 1}/${encryptedBlobs.length}...`,
+          decryptProgress: { current: i, total: encryptedBlobs.length },
+        });
+
+        try {
+          // Decrypt using Seal
+          const decryptedData = await decryptData(
+            suiClient,
+            blob.encryptedData,
+            dealId,
+            packageId,
+            userAddress,
+            signPersonalMessage
+          );
+
+          // Parse decrypted data as JSON
+          const textDecoder = new TextDecoder();
+          const jsonText = textDecoder.decode(decryptedData);
+          const parsedDoc = JSON.parse(jsonText);
+
+          documents.push(parsedDoc);
+
+          console.log(`✅ Blob ${blob.blobId} decrypted and parsed`);
+        } catch (error) {
+          console.error(`Failed to decrypt/parse blob ${blob.blobId}:`, error);
+          // Continue with other blobs
+        }
+      }
+
+      if (documents.length === 0) {
+        throw new Error('No valid JSON documents found after decryption');
       }
 
       setProgress({
-        phase: 'downloading',
-        message: `Found ${jsonBlobs.length} JSON documents`,
-        documentsFound: jsonBlobs.length,
+        phase: 'decrypting',
+        message: `Decrypted ${documents.length} documents`,
+        documentsFound: documents.length,
       });
 
-      // Phase 2: Calculate KPI using TEE API
+      // Phase 3: Calculate KPI using TEE API
       setProgress({
         phase: 'calculating',
-        message: `Calculating KPI from ${jsonBlobs.length} documents...`,
-        documentsFound: jsonBlobs.length,
+        message: `Calculating KPI from ${documents.length} documents...`,
+        documentsFound: documents.length,
       });
-
-      // Extract document data for KPI calculation
-      const documents = jsonBlobs.map((blob) => blob.data);
 
       // Call TEE API
       const response = await fetch('/api/v1/tee/compute', {
@@ -160,15 +223,15 @@ export function useKPICalculation(): UseKPICalculationReturn {
           signature: hexToUint8Array(teeResult.attestation.signature),
         },
         attestation_bytes: teeResult.attestation_bytes,
-        documentsProcessed: jsonBlobs.length,
+        documentsProcessed: documents.length,
         calculationTime: Date.now() - startTime,
       };
 
-      // Phase 3: Completed
+      // Phase 4: Completed
       setProgress({
         phase: 'completed',
         message: `KPI calculated successfully`,
-        documentsFound: jsonBlobs.length,
+        documentsFound: documents.length,
       });
 
       setResult(calculationResult);
@@ -194,7 +257,7 @@ export function useKPICalculation(): UseKPICalculationReturn {
 
       return null;
     }
-  }, []);
+  }, [currentAccount, suiClient, signPersonalMessage]);
 
   return {
     isCalculating,

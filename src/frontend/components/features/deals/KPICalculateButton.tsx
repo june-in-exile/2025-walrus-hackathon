@@ -28,6 +28,8 @@ import {
   FileJson,
   Download,
   Zap,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 
 interface KPICalculateButtonProps {
@@ -65,6 +67,8 @@ export function KPICalculateButton({
     switch (progress.phase) {
       case 'downloading':
         return <Download className="h-5 w-5 animate-pulse text-blue-600" />;
+      case 'decrypting':
+        return <Unlock className="h-5 w-5 animate-pulse text-amber-600" />;
       case 'calculating':
         return <Zap className="h-5 w-5 animate-pulse text-purple-600" />;
       case 'completed':
@@ -80,6 +84,8 @@ export function KPICalculateButton({
     switch (progress.phase) {
       case 'downloading':
         return 'text-blue-600';
+      case 'decrypting':
+        return 'text-amber-600';
       case 'calculating':
         return 'text-purple-600';
       case 'completed':
@@ -170,6 +176,33 @@ export function KPICalculateButton({
                     Current: {progress.downloadProgress.current.slice(0, 16)}...
                   </p>
                 )}
+              </div>
+            )}
+
+            {/* Decrypt Progress */}
+            {progress.phase === 'decrypting' && progress.decryptProgress && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground flex items-center gap-2">
+                    <Lock className="h-4 w-4" />
+                    Decrypting with Seal
+                  </span>
+                  <span className="font-medium">
+                    {progress.decryptProgress.current} /{' '}
+                    {progress.decryptProgress.total}
+                  </span>
+                </div>
+                <Progress
+                  value={
+                    (progress.decryptProgress.current /
+                      progress.decryptProgress.total) *
+                    100
+                  }
+                  className="bg-amber-100"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Requesting decryption keys from Seal Key Servers...
+                </p>
               </div>
             )}
 

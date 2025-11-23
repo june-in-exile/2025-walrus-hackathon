@@ -2,16 +2,13 @@ module contracts::earnout {
     use sui::event;
     use sui::clock::{Self, Clock};
     use std::string::{String};
-    use sui::ed25519;
     use sui::coin::{Self, Coin};
     use sui::sui::SUI;
-    use sui::hash;
 
     // --- Error Codes ---
 
     const ENotBuyer: u64 = 0;
     const ENotAuditor: u64 = 1;
-    const EInvalidSignature: u64 = 2;
     const EAlreadyAudited: u64 = 3;
     const ENotAuthorized: u64 = 4;
     const EMismatchLength: u64 = 5;
@@ -354,12 +351,16 @@ module contracts::earnout {
 
     // --- Data Audit Functions ---
 
-    /// Auditor audits a data record with signature verification
+    /// Auditor audits a data record
+    ///
+    /// SIMPLIFIED VERSION: No off-chain signature verification
+    /// The transaction itself serves as proof of auditor's intent:
+    /// - Only the auditor can call this function (checked via deal.auditor)
+    /// - The wallet signature on the transaction proves authenticity
+    /// - This is more gas-efficient and avoids Ed25519/Blake2b compatibility issues
     public fun audit_data(
         deal: &Deal,
         audit_record: &mut DataAuditRecord,
-        signature: vector<u8>,
-        public_key: vector<u8>,
         clock: &Clock,
         ctx: &mut TxContext
     ) {
@@ -368,33 +369,6 @@ module contracts::earnout {
         assert!(sender == deal.auditor, ENotAuditor);
         assert!(!audit_record.audited, EAlreadyAudited);
         assert!(audit_record.deal_id == object::id(deal), ENotAuthorized);
-
-        // Build the message: "AUDIT:{data_id}"
-        let mut message = vector::empty<u8>();
-        vector::append(&mut message, b"AUDIT:");
-        vector::append(&mut message, *audit_record.data_id.as_bytes());
-
-        // Sui PersonalMessage signing process:
-        // 1. Wallet builds: intent_message = [3, 0, 0] + raw_message
-        // 2. Wallet computes: hash = Blake2b-256(intent_message) -> 32 bytes
-        // 3. Wallet performs: signature = Ed25519_sign(private_key, hash)
-        //
-        // The wallet signs the 32-byte HASH, not the original message.
-        // Therefore, ed25519_verify must receive the same 32-byte hash as input.
-        //
-        // Build the same intent message the wallet used:
-        let mut intent_message = vector::empty<u8>();
-        vector::push_back(&mut intent_message, 3u8);  // PersonalMessage scope
-        vector::push_back(&mut intent_message, 0u8);  // V0 version
-        vector::push_back(&mut intent_message, 0u8);  // Sui app_id
-        vector::append(&mut intent_message, message);
-
-        // Compute the same hash the wallet used before signing
-        let message_hash = hash::blake2b256(&intent_message);
-
-        // Verify the Ed25519 signature against the hash (the actual signed data)
-        let is_valid = ed25519::ed25519_verify(&signature, &public_key, &message_hash);
-        assert!(is_valid, EInvalidSignature);
 
         // Update audit record
         let timestamp = clock::timestamp_ms(clock);

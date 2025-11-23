@@ -3,23 +3,12 @@ paths:
     get:
       summary: List all deals for current user
       description: |
-        **Purpose**: Retrieve all earn-out deals where the current user has a role (buyer, seller, or auditor)
+        Retrieve paginated list of earn-out deals where the user is buyer, seller, or auditor.
 
-        **Business Logic**:
-        - Queries Sui blockchain for all deals where userAddress is buyer, seller, or auditor
-        - Aggregates with off-chain metadata for faster response
-        - Returns paginated list sorted by last activity
-        - Includes summary statistics for each deal
+        Queries Sui blockchain for Deal objects where user has a role, sorted by last activity.
+        Results cached for 30 seconds for performance.
 
-        **Sui Integration**:
-        - Reads: Queries Deal objects on Sui where user has role
-        - Events: Reads recent events to determine last activity
-        - Caching: Results cached for 30 seconds
-
-        **Authentication**: Level 1 (Read)
-        - Requires: `X-Sui-Address` header only
-        - No signature required - provides frictionless browsing
-        - Backend filters results to only show deals where user has a role
+        Authentication: Level 1 (Read) - X-Sui-Address header only, no signature required.
       operationId: listDeals
       tags:
         - Deal Management
@@ -114,37 +103,21 @@ paths:
     post:
       summary: Create a new earn-out deal
       description: |
-        **Purpose**: Create a new M&A earn-out deal on the Sui blockchain
+        Create a new M&A earn-out deal on Sui blockchain with role-based access control.
 
-        **Business Logic**:
-        - Creates on-chain Deal object via Move contract
-        - Stores metadata in local database for faster queries
-        - Initializes empty periods array (periods added via parameters endpoint)
-        - Returns unsigned transaction for user to sign with wallet
+        Technical Flow:
+        1. API builds unsigned transaction calling `earnout::create_deal()` Move function
+        2. Returns transaction bytes to frontend
+        3. User signs transaction in wallet
+        4. Transaction executed on-chain with signature verification
 
-        **Sui Integration**:
-        - Writes: Creates new Deal object via `earnout::create_deal()`
-        - Transaction: Returns unsigned transaction for frontend to sign
-        - Events: Emits `DealCreated` event on-chain with dealId
-        - Gas: Estimated ~1,000,000 MIST
+        Technical Highlights:
+        - On-chain Deal object created via Sui Move contract
+        - Seal policy initialized for role-based encryption (buyer, seller, auditor)
+        - DealCreated event emitted with dealId
+        - Estimated gas: ~1,000,000 MIST
 
-        **Seal Integration**:
-        - Creates corresponding Seal policy for this deal
-        - Initializes access control: buyer can read/write, seller/auditor can read
-
-        **Authentication**: Level 2 (Write)
-        - Requires: `X-Sui-Address` header only
-        - API returns unsigned transaction bytes
-        - User signs transaction in wallet (this is where authentication happens)
-        - Transaction is executed on-chain with signature verification
-        - Move contract enforces that sender is the buyer
-
-        **Security Flow**:
-        1. API validates address format and request data
-        2. API builds unsigned transaction calling `earnout::create_deal()`
-        3. Frontend receives transaction bytes
-        4. User signs transaction in wallet
-        5. Transaction executes on-chain - blockchain verifies signature
+        Authentication: Level 2 (Write) - Returns unsigned transaction for wallet signing.
       operationId: createDeal
       tags:
         - Deal Management
@@ -222,25 +195,12 @@ paths:
     get:
       summary: Get detailed information about a specific deal
       description: |
-        **Purpose**: Retrieve complete details of an earn-out deal
+        Retrieve complete deal details including all periods, roles, and current status.
 
-        **Business Logic**:
-        - Fetches Deal object from Sui blockchain
-        - Combines with off-chain metadata for enriched response
-        - Includes all periods, roles, and current status
-        - Verifies user has access to this deal
+        Fetches Deal and Period objects from Sui blockchain. Results cached for 60 seconds.
+        Backend verifies user is buyer, seller, or auditor (returns 403 if not).
 
-        **Sui Integration**:
-        - Reads: Fetches Deal object by dealId
-        - Reads: Fetches all Period objects for this deal
-        - Events: Recent events for activity timeline
-        - Caching: Cached for 60 seconds (invalidated on updates)
-
-        **Authentication**: Level 1 (Read)
-        - Requires: `X-Sui-Address` header only
-        - No signature required
-        - Backend verifies user is buyer, seller, or auditor of this deal
-        - Returns 403 if user is not a participant
+        Authentication: Level 1 (Read) - X-Sui-Address header only, no signature required.
       operationId: getDeal
       tags:
         - Deal Management
@@ -309,30 +269,18 @@ paths:
     get:
       summary: Get dashboard data for a specific deal
       description: |
-        **Purpose**: Get comprehensive dashboard view for a deal including periods summary, health metrics, and recent events
+        Comprehensive dashboard view including periods summary, health metrics, and recent events.
 
-        **Business Logic**:
-        - Aggregates deal information from Sui blockchain
-        - Provides periods summary with data upload progress and KPI/settlement status
-        - Provides health metrics and risk indicators
-        - Shows recent activity timeline
+        Aggregates data from Sui blockchain Deal and Period objects, plus recent events for activity timeline.
+        Results cached for 30 seconds.
 
-        **Sui Integration**:
-        - Reads: Deal object from blockchain
-        - Reads: All Period objects for period-specific data
-        - Events: Recent blockchain events for activity feed
-        - Caching: Results cached for 30 seconds
+        Response includes:
+        - Deal info with user role
+        - Periods summary with data upload progress, KPI status, settlement status
+        - Recent on-chain events (KPI approvals, data uploads)
+        - Health metrics and risk indicators
 
-        **Authentication**: Level 1 (Read)
-        - Requires: `X-Sui-Address` header only
-        - No signature required
-        - Backend verifies user is buyer, seller, or auditor
-        - Returns 404 if deal not found or user not authorized
-
-        **Security**:
-        - Address-only authentication (frictionless UX)
-        - Backend filters by user role
-        - All data served is from public blockchain (no secrets exposed)
+        Authentication: Level 1 (Read) - X-Sui-Address header only, no signature required.
       operationId: getDealDashboard
       tags:
         - Deal Management
@@ -442,6 +390,156 @@ paths:
                 $ref: '../schemas/errors.yaml#/components/schemas/UnauthorizedError'
         '404':
           description: Deal not found or user is not a participant
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/NotFoundError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/ErrorResponse'
+
+  /deals/{dealId}/blobs:
+    get:
+      summary: Get all Walrus blob references for a deal
+      description: |
+        Retrieve all encrypted financial documents (Walrus blobs) registered for a deal.
+
+        Technical Flow:
+        - Queries on-chain blob references from Sui Deal object
+        - Fetches metadata from Walrus for each blob
+        - Retrieves audit status from on-chain audit records
+        - Returns combined data with blob IDs, metadata, and audit status
+
+        Technical Highlight: Demonstrates Walrus + Sui integration - blob IDs registered on-chain for immutable proof.
+
+        Authentication: None (should implement Level 1 auth in future).
+      operationId: getDealBlobs
+      tags:
+        - Deals
+      parameters:
+        - name: dealId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^0x[a-fA-F0-9]{64}$'
+          description: Sui object ID of the deal
+          example: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+      responses:
+        '200':
+          description: Successfully retrieved blob references
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '../schemas/walrus.yaml#/components/schemas/BlobReference'
+              example:
+                - blobId: "blob_abc123"
+                  dataType: "financial_report"
+                  uploadedAt: "2026-02-05T14:30:00Z"
+                  uploaderAddress: "0xabc..."
+                  metadata:
+                    filename: "revenue_report_jan_2026.pdf"
+                    contentType: "application/pdf"
+                    size: 524288
+                  auditStatus:
+                    audited: true
+                    auditor: "0x987..."
+                    auditTimestamp: "2026-02-10T16:00:00Z"
+                - blobId: "blob_def456"
+                  dataType: "expense_report"
+                  uploadedAt: "2026-02-06T10:00:00Z"
+                  uploaderAddress: "0xabc..."
+                  metadata:
+                    filename: "expenses_jan_2026.xlsx"
+                    contentType: "application/vnd.ms-excel"
+                    size: 102400
+                  auditStatus:
+                    audited: false
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/ErrorResponse'
+
+  /deals/{dealId}/periods/{periodId}/blobs:
+    get:
+      summary: Get Walrus blob references for a specific period
+      description: |
+        Retrieve all encrypted financial documents for a specific period within a deal.
+
+        Similar to /deals/{dealId}/blobs but filtered by period ID.
+        Includes metadata from Walrus and audit status from on-chain records.
+
+        Response includes download URLs for each blob.
+
+        Authentication: None (should implement Level 1 auth in future).
+      operationId: getPeriodBlobs
+      tags:
+        - Deals
+      parameters:
+        - name: dealId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^0x[a-fA-F0-9]{64}$'
+          description: Sui object ID of the deal
+        - name: periodId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Period identifier (e.g., "2026-Q1", "period_2026_01")
+          example: "2026-Q1"
+      responses:
+        '200':
+          description: Successfully retrieved period blob references
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dealId:
+                    type: string
+                  periodId:
+                    type: string
+                  blobs:
+                    type: array
+                    items:
+                      $ref: '../schemas/walrus.yaml#/components/schemas/BlobReference'
+                  total:
+                    type: integer
+              example:
+                dealId: "0x1234..."
+                periodId: "2026-Q1"
+                blobs:
+                  - blobId: "blob_abc123"
+                    dataType: "financial_report"
+                    periodId: "2026-Q1"
+                    uploadedAt: "2026-02-05T14:30:00Z"
+                    uploaderAddress: "0xabc..."
+                    metadata:
+                      filename: "revenue_report_q1_2026.pdf"
+                    size: 524288
+                    downloadUrl: "/api/v1/walrus/download/blob_abc123?dealId=0x1234..."
+                    auditStatus:
+                      audited: true
+                      auditor: "0x987..."
+                total: 1
+        '400':
+          description: Validation error (invalid deal ID or missing period ID)
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/ValidationError'
+        '404':
+          description: Deal or period not found
           content:
             application/json:
               schema:

@@ -2,7 +2,6 @@
  * useDealRole Hook
  *
  * Automatically determines user's role in a specific deal based on wallet address
- * This replaces the manual RoleContext with blockchain-based role detection
  */
 
 import { useMemo } from 'react';

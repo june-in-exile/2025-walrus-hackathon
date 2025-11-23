@@ -1,79 +1,42 @@
 paths:
   /walrus/upload:
     post:
-      summary: Upload file to Walrus (Hybrid Encryption Mode)
+      summary: Upload encrypted file to Walrus decentralized storage
       description: |
-        **Purpose**: Upload financial documents to Walrus decentralized storage with flexible encryption
+        Upload financial documents to Walrus with Seal encryption and on-chain blob registration.
 
-        **Why Upload Relay is Needed**:
-        - Direct browser uploads to Walrus require ~2000+ HTTP requests per file
-        - This creates significant browser performance issues and potential failures
-        - Upload relay reduces this to a single API call from frontend
-        - Backend handles the heavy lifting using @mysten/walrus SDK
+        Key Innovation - Upload Relay Pattern:
+        - Direct browser uploads to Walrus require 2000+ HTTP requests per file
+        - This relay reduces it to 1 API call, significantly improving UX
+        - Backend handles Walrus SDK communication while maintaining security
 
-        **Encryption Modes** (controlled by `mode` query parameter):
+        Encryption Modes (via `mode` query parameter):
 
-        **Mode A: client_encrypted (Default, Recommended)**
-        - File is encrypted by frontend using @mysten/seal SDK before upload
-        - To perform client-side encryption, the frontend must first fetch the deal's access control policy from the `GET /deals/{dealId}/seal-policy` endpoint.
-        - Backend only relays the ciphertext to Walrus (never sees plaintext)
-        - Highest security: Backend cannot access file contents
-        - Fully Web3: User controls their own data encryption
+        1. **client_encrypted** (Default, Recommended)
+           - Frontend encrypts with Seal SDK before upload
+           - Backend relays ciphertext to Walrus (never sees plaintext)
+           - Zero-knowledge: Backend cannot access file contents
 
-        Upload Flow:
-        1. Frontend: User selects file → Fetches Seal Policy → Encrypts with Seal SDK → Sends ciphertext
-        2. Backend: Receives ciphertext → Uploads to Walrus → Returns blobId
-        3. Frontend: Signs Sui transaction to register blob on-chain
+        2. **server_encrypted** (Convenience)
+           - Frontend sends plaintext, backend encrypts with Seal
+           - Simplified UX, requires trusting backend during upload
+           - Frontend still decrypts on download
 
-        **Mode B: server_encrypted (Convenience Mode)**
-        - Frontend sends plaintext file to backend
-        - Backend encrypts using Seal SDK, then uploads to Walrus
-        - Simplified upload: Frontend doesn't need Seal SDK for encryption
-        - Trade-off: Backend can access plaintext during upload (trusted environment required)
-        - Download: Frontend still decrypts using Seal SDK (maintains security)
+        Technical Flow:
+        1. User selects file, frontend encrypts (or sends plaintext for server mode)
+        2. Backend uploads to Walrus, returns blobId
+        3. For real deals: Returns unsigned transaction to register blob on-chain
+        4. Frontend signs transaction, creating immutable proof of data submission
 
-        Upload Flow:
-        1. Frontend: User selects file → Sends plaintext to backend
-        2. Backend: Encrypts with Seal → Uploads to Walrus → Returns blobId
-        3. Frontend: Signs Sui transaction to register blob on-chain
+        Walrus Integration Highlights:
+        - Stores encrypted data on decentralized network (no single point of failure)
+        - Blob IDs returned for on-chain registration via Sui Move contract
+        - Access controlled by Seal policy on blockchain
 
-        **Walrus Integration**:
-        - SDK: Uses @mysten/walrus TypeScript SDK
-        - Network: Uploads to configured Walrus aggregator/publisher
-        - Storage: Stores ONLY encrypted ciphertext (never plaintext)
-        - Metadata: Returns blobId and commitment for on-chain registration
+        Authentication:
+        - Pending deals (dealId="pending"): Level 1 (Read) - No transaction returned
+        - Real deals (dealId=0x...): Level 2 (Write) - Returns unsigned transaction
 
-        **Seal Integration**:
-        - Policy: `earnout_seal_policy` controls who can decrypt. The policy is retrieved via the `GET /deals/{dealId}/seal-policy` endpoint.
-        - Access: Only buyer/seller/auditor can decrypt based on on-chain roles
-        - Decryption keys: Managed by Seal Key Servers with blockchain verification
-
-        **Next Steps After Upload**:
-        - For real deal uploads: Frontend must call a Sui transaction to register this blobId on-chain
-        - Transaction binds blob to specific deal/period
-        - This creates immutable audit trail of data submissions
-
-        **Authentication**: Tiered (based on upload type)
-        - Requires: `X-Sui-Address` header only
-
-        **Pending Deal Uploads** (dealId: 'pending'):
-        - Level 1 (Read) authentication
-        - Used for M&A agreement uploads before deal creation
-        - No transaction returned - simple upload confirmation
-        - Frictionless UX for initial document sharing
-
-        **Real Deal Uploads** (dealId: actual deal object ID):
-        - Level 2 (Write) authentication
-        - Used for financial documents tied to specific periods
-        - Returns unsigned transaction for on-chain blob registration
-        - User signs transaction in wallet
-        - Move contract enforces access control on-chain
-
-        **Security Flow**:
-        1. API detects upload type based on dealId parameter
-        2. Validates address and uploads encrypted file to Walrus
-        3. Returns blobId (always) and unsigned transaction (real deals only)
-        4. For real deals: User signs transaction, blockchain verifies permissions
       operationId: uploadToWalrus
       tags:
         - Walrus
@@ -88,9 +51,8 @@ paths:
             enum: [client_encrypted, server_encrypted]
             default: client_encrypted
           description: |
-            Encryption mode:
-            - `client_encrypted`: File already encrypted by frontend (default, most secure)
-            - `server_encrypted`: Backend encrypts file (convenience mode, requires trust)
+            client_encrypted: Frontend encrypted (most secure)
+            server_encrypted: Backend encrypts (convenience mode)
         - name: X-Sui-Address
           in: header
           required: true
@@ -114,20 +76,17 @@ paths:
                   type: string
                   format: binary
                   description: |
-                    File data (plaintext or ciphertext depending on mode):
-                    - `client_encrypted` mode: Encrypted ciphertext from Seal SDK
-                    - `server_encrypted` mode: Plaintext file (backend will encrypt)
+                    File data: encrypted ciphertext (client mode) or plaintext (server mode)
                 dealId:
                   type: string
                   description: |
-                    Deal ID this file belongs to:
-                    - Use `"pending"` for M&A agreement uploads before deal creation (Level 1 auth, no transaction)
-                    - Use actual deal object ID (0x...) for financial documents (Level 2 auth, returns transaction)
+                    "pending" for pre-deal uploads (Level 1 auth, no transaction)
+                    Deal object ID (0x...) for financial docs (Level 2 auth, returns transaction)
                   example: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
                 periodId:
                   type: string
-                  description: Period ID this file belongs to
-                  example: "period_2026"
+                  description: Period identifier
+                  example: "2026-Q1"
                 dataType:
                   type: string
                   enum:
@@ -142,109 +101,54 @@ paths:
                       "custom",
                     ]
                   description: Type of financial data
-                  example: "revenue_journal"
                 customDataType:
                   type: string
                   description: Custom data type name (if dataType is 'custom')
-                  example: "Customer Acquisition Cost Report"
                 filename:
                   type: string
                   description: Original filename
-                  example: "revenue_q1_2026.pdf"
                 description:
                   type: string
                   maxLength: 500
                   description: File description
-                  example: "Q1 2026 revenue journal with detailed transaction logs"
-            example:
-              file: "[Binary encrypted data]"
-              dealId: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-              periodId: "period_2026"
-              dataType: "revenue_journal"
-              filename: "revenue_q1_2026.csv"
-              description: "Q1 2026 revenue journal"
       responses:
         "200":
           description: |
-            File successfully uploaded to Walrus.
+            File uploaded to Walrus successfully.
 
-            **Pending Deal Upload** (dealId: 'pending'):
-            - Returns blobId and metadata only
-            - No `nextStep` or `transaction` fields (simple confirmation)
-
-            **Real Deal Upload** (dealId: actual object ID):
-            - Returns blobId, metadata, AND unsigned transaction
-            - `nextStep.transaction` contains txBytes for on-chain registration
-            - Frontend must execute this transaction to complete the upload process
+            For real deals: includes unsigned transaction for on-chain blob registration.
+            For pending deals: simple confirmation with blobId.
           content:
             application/json:
               schema:
                 $ref: "../schemas/walrus.yaml#/components/schemas/WalrusUploadResponse"
               examples:
                 realDealUpload:
-                  summary: Real deal upload (with transaction)
+                  summary: Real deal upload (with transaction for on-chain registration)
                   value:
                     blobId: "blob_2Nf8pQz3Xm7Yk5Rd9Wv1Bc6Lt4Hs"
-                    commitment: "sha256:a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef12345678"
+                    commitment: "sha256:a1b2c3d4..."
                     size: 2048576
                     uploadedAt: "2026-03-15T09:30:00Z"
-                    blobReference:
-                      blobId: "blob_2Nf8pQz3Xm7Yk5Rd9Wv1Bc6Lt4Hs"
-                      dataType: "revenue_journal"
-                      uploadedAt: "2026-03-15T09:30:00Z"
-                      uploaderAddress: "0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
-                      size: 2048576
-                      metadata:
-                        filename: "revenue_q1_2026.csv"
-                        mimeType: "text/csv"
-                        description: "Q1 2026 revenue journal"
-                        periodId: "period_2026"
-                        encrypted: true
                     nextStep:
                       action: "register_on_chain"
-                      description: "Sign transaction to register this blob on-chain"
+                      description: "Sign transaction to register blob on-chain"
                       transaction:
                         txBytes: "AAACAAgA..."
-                        description: "Register Walrus blob: revenue_journal for period_2026"
+                        description: "Register Walrus blob: revenue_journal for 2026-Q1"
                 pendingDealUpload:
-                  summary: Pending deal upload (M&A agreement, no transaction)
+                  summary: Pending deal upload (no transaction)
                   value:
-                    blobId: "blob_8Kf2pQz9Xm3Yk7Rd1Wv5Bc2Lt6Hs"
-                    commitment: "sha256:f5e4d3c2b1a098765432109876543210fedcba9876543210fedcba98765432"
+                    blobId: "blob_8Kf2pQz9..."
+                    commitment: "sha256:f5e4d3c2..."
                     size: 201765
                     uploadedAt: "2025-11-23T10:15:00Z"
-                    blobReference:
-                      blobId: "blob_8Kf2pQz9Xm3Yk7Rd1Wv5Bc2Lt6Hs"
-                      dataType: "custom"
-                      uploadedAt: "2025-11-23T10:15:00Z"
-                      uploaderAddress: "0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
-                      size: 201765
-                      metadata:
-                        filename: "mna_agreement.pdf"
-                        mimeType: "application/pdf"
-                        description: "M&A Agreement - TechCorp Acquisition"
-                        customDataType: "M&A Agreement"
-                        encrypted: false
         "400":
           description: Validation error
           content:
             application/json:
               schema:
                 $ref: "../schemas/errors.yaml#/components/schemas/ValidationError"
-              examples:
-                missingFile:
-                  value:
-                    error: "ValidationError"
-                    message: "File is required"
-                    statusCode: 400
-                fileTooLarge:
-                  value:
-                    error: "ValidationError"
-                    message: "File size exceeds maximum allowed (100MB)"
-                    statusCode: 400
-                    details:
-                      maxSize: 104857600
-                      actualSize: 150000000
         "401":
           description: Unauthorized
           content:
@@ -257,59 +161,38 @@ paths:
             application/json:
               schema:
                 $ref: "../schemas/errors.yaml#/components/schemas/ForbiddenError"
-        "404":
-          description: Deal or period not found
-          content:
-            application/json:
-              schema:
-                $ref: "../schemas/errors.yaml#/components/schemas/NotFoundError"
         "500":
           description: Walrus upload failed
           content:
             application/json:
               schema:
                 $ref: "../schemas/errors.yaml#/components/schemas/ErrorResponse"
-              example:
-                error: "WalrusUploadError"
-                message: "Failed to upload file to Walrus network"
-                statusCode: 500
-                details:
-                  reason: "Connection timeout to Walrus aggregator"
 
   /walrus/download/{blobId}:
     get:
-      summary: Download encrypted file from Walrus (Frontend Decryption)
+      summary: Download encrypted file from Walrus for client-side decryption
       description: |
-        **Purpose**: Download encrypted financial documents from Walrus for frontend decryption
+        Download encrypted financial documents from Walrus decentralized storage.
 
-        **Download Flow**:
-        1. Frontend: Requests blobId with user's Sui address
-        2. Backend: Verifies access → Downloads ciphertext from Walrus → Returns ciphertext
-        3. Frontend: Uses `@mysten/seal` SDK to decrypt locally
+        Technical Flow:
+        1. Backend verifies user has role in deal (buyer/seller/auditor)
+        2. Downloads encrypted blob from Walrus
+        3. Returns ciphertext with Seal policy metadata in headers
+        4. Frontend decrypts locally using Seal SDK
 
-        **Encryption Transparency**:
-        - The response header `X-Original-Encryption-Mode` indicates how the file was encrypted during upload:
-          - `client_encrypted`: Frontend encrypted the file before upload
-          - `server_encrypted`: Backend encrypted the file during upload
-        - Regardless of upload method, **frontend always decrypts** using Seal SDK
+        Key Security Feature:
+        - Backend never decrypts or accesses plaintext
+        - Even if unauthorized user obtains ciphertext, cannot decrypt without proper role
+        - Access control enforced by Seal whitelist on Sui blockchain
 
-        **Seal Policy Information**:
-        - Backend provides `X-Seal-Package-Id` and `X-Seal-Whitelist-Id` headers
-        - Frontend uses these to request decryption keys from Seal Key Servers
-        - Access control is enforced by the whitelist Move contract on Sui blockchain
+        Response Headers:
+        - X-Seal-Package-Id: Seal package ID for decryption
+        - X-Seal-Whitelist-Id: Whitelist object ID for access control
+        - X-Original-Encryption-Mode: How file was encrypted (client/server)
+        - X-Data-Type, X-Period-Id, X-Filename: Blob metadata
 
-        **Authentication**: Level 1 (Read)
-        - Requires: `X-Sui-Address` header only
-        - No signature required for download
-        - Backend verifies user is buyer/seller/auditor via Sui blockchain query
-        - Returns encrypted ciphertext (frontend decrypts with Seal)
+        Authentication: Level 1 (Read) - X-Sui-Address header only, no signature required.
 
-        **Security Features**:
-        - Backend never decrypts or sees plaintext during download
-        - All access attempts are logged for audit trail
-        - Invalid access attempts return 403 Forbidden
-        - Decryption keys are fetched on-demand from Seal Key Servers (not stored)
-        - Even if unauthorized user gets ciphertext, they cannot decrypt without proper role
       operationId: downloadFromWalrus
       tags:
         - Walrus
@@ -330,7 +213,6 @@ paths:
             type: string
             pattern: "^0x[a-fA-F0-9]{64}$"
           description: Deal ID for authorization check
-          example: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
         - name: X-Sui-Address
           in: header
           required: true
@@ -340,7 +222,7 @@ paths:
           description: Sui wallet address requesting download
       responses:
         "200":
-          description: File successfully downloaded
+          description: Encrypted file downloaded successfully
           headers:
             X-Blob-Id:
               schema:
@@ -354,63 +236,35 @@ paths:
             X-Seal-Package-Id:
               schema:
                 type: string
-              description: Seal package ID for client-side decryption (required for Seal SDK)
+              description: Seal package ID for client-side decryption
             X-Seal-Whitelist-Id:
               schema:
                 type: string
-              description: Whitelist object ID for seal_approve transaction (access control)
+              description: Whitelist object ID for access control
             X-Data-Type:
               schema:
                 type: string
               description: Data type (revenue_journal, etc.)
-            X-Period-Id:
-              schema:
-                type: string
-              description: Period identifier
-            X-Uploaded-At:
-              schema:
-                type: string
-                format: date-time
-              description: Upload timestamp
-            X-Uploader-Address:
-              schema:
-                type: string
-              description: Sui address of uploader
             X-Filename:
               schema:
                 type: string
-              description: Original filename (if available)
+              description: Original filename
             Content-Type:
               schema:
                 type: string
               description: File MIME type
-            Content-Disposition:
-              schema:
-                type: string
-              description: Attachment with filename
           content:
             application/octet-stream:
               schema:
                 type: string
                 format: binary
-              example: "[Binary encrypted data from Walrus - requires frontend Seal SDK to decrypt]"
+              description: Encrypted binary data (requires Seal SDK to decrypt on frontend)
         "400":
           description: Invalid request
           content:
             application/json:
               schema:
                 $ref: "../schemas/errors.yaml#/components/schemas/ValidationError"
-              examples:
-                invalidBlobId:
-                  value:
-                    error: "ValidationError"
-                    message: "Invalid blob ID format"
-                    statusCode: 400
-                missingDealId:
-                  value:
-                    error: "ValidationError"
-                    message: "dealId query parameter is required"
-                    statusCode: 400
         "401":
           description: Unauthorized
           content:
@@ -423,44 +277,15 @@ paths:
             application/json:
               schema:
                 $ref: "../schemas/errors.yaml#/components/schemas/ForbiddenError"
-              example:
-                error: "ForbiddenError"
-                message: "User is not authorized to access this blob"
-                statusCode: 403
-                details:
-                  reason: "User is not a participant in deal 0x1234..."
-                  userAddress: "0xabcd..."
-                  dealId: "0x1234..."
         "404":
-          description: Blob not found
+          description: Blob not found on Walrus network
           content:
             application/json:
               schema:
                 $ref: "../schemas/errors.yaml#/components/schemas/NotFoundError"
-              example:
-                error: "NotFoundError"
-                message: "Blob not found on Walrus network"
-                statusCode: 404
-                details:
-                  blobId: "blob_2Nf8pQz3Xm7Yk5Rd9Wv1Bc6Lt4Hs"
         "500":
-          description: Download or decryption failed
+          description: Download failed
           content:
             application/json:
               schema:
                 $ref: "../schemas/errors.yaml#/components/schemas/ErrorResponse"
-              examples:
-                walrusError:
-                  value:
-                    error: "WalrusDownloadError"
-                    message: "Failed to download blob from Walrus network"
-                    statusCode: 500
-                    details:
-                      reason: "Connection timeout to Walrus storage nodes"
-                sealKeyServerError:
-                  value:
-                    error: "WalrusDownloadError"
-                    message: "Failed to download blob from Walrus network"
-                    statusCode: 500
-                    details:
-                      reason: "Walrus storage node unavailable"

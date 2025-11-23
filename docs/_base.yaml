@@ -15,12 +15,42 @@ info:
     - Track KPIs and verify calculations transparently
     - Execute settlements automatically based on audited KPIs
 
+    ## Technical Innovation Highlights
+
+    This platform demonstrates several key technical innovations for the Walrus Hackathon:
+
+    **1. Walrus as Core Storage Layer**
+    - Financial documents stored on Walrus decentralized network, not centralized servers
+    - Blob IDs registered on Sui blockchain for immutable proof of data
+    - No single point of failure or censorship risk
+
+    **2. Hybrid Encryption Architecture**
+    - Client-side encryption: Files encrypted in browser before upload (zero-knowledge)
+    - Server-side encryption: Backend encrypts for simplified UX
+    - Both modes use Seal for role-based access control (buyer, seller, auditor)
+
+    **3. Upload Relay Optimization**
+    - Single API call handles: Walrus upload + Seal encryption + on-chain registration
+    - Reduces 2000+ frontend requests to 1 backend operation
+    - Improves UX and reduces gas costs
+
+    **4. Tiered Authentication System**
+    - Level 1 (Read): Address-only authentication, no signature required
+    - Level 2 (Write): Returns unsigned transactions for wallet signing
+    - Enables zkLogin compatibility (OAuth wallets) and frictionless browsing
+
+    **5. TEE Integration**
+    - Nautilus Trusted Execution Environment for verifiable KPI computation
+    - 144-byte cryptographic attestation proves calculation integrity
+    - TEE fetches data from Walrus, computes KPI, signs result with Ed25519
+
     ## Technology Stack
 
     - **Blockchain**: Sui Network (smart contracts in Move)
-    - **Storage**: Walrus (decentralized file storage)
-    - **Encryption**: Seal (role-based access control)
-    - **Frontend**: Next.js with @mysten/dapp-kit
+    - **Storage**: Walrus Protocol (decentralized blob storage)
+    - **Encryption**: Mysten Seal (role-based access control)
+    - **TEE**: Nautilus (verifiable computation)
+    - **Frontend**: Next.js 16 with @mysten/dapp-kit
 
     ## Key Concepts
 
@@ -31,75 +61,48 @@ info:
     - **Auditor**: Verifies data, attests KPIs
 
     ### Period
-    A time range (e.g., fiscal year) with specific KPI targets and earn-out formulas. Each period progresses through stages:
-    1. Data Collection (buyer uploads financial documents)
-    2. KPI Proposal (buyer proposes calculated KPI)
-    3. KPI Attestation (auditor verifies and approves)
-    4. Settlement (buyer executes payout to seller)
+    A time range (e.g., fiscal year) within a deal where KPIs are tracked and verified.
 
     ### Walrus Blobs
-    Encrypted financial documents stored on Walrus network. Access controlled by Seal policy on Sui blockchain.
+    Encrypted financial documents stored on Walrus network, with blob IDs registered on-chain for immutable proof.
 
     ### KPI (Key Performance Indicator)
-    Metrics like revenue, EBITDA, or custom metrics that determine earn-out amounts according to on-chain formulas.
+    Metrics like revenue, EBITDA, or custom calculations that determine earn-out amounts.
 
     ## Authentication
 
-    This API uses a **tiered authentication system** designed for optimal UX and security:
+    **Tiered Authentication System** designed for optimal UX and security:
 
-    ### Level 1: Read Operations (Address-only Authentication)
+    **Level 1 (Read Operations)**
+    - For: GET endpoints (listing, querying, viewing data)
+    - Requires: `X-Sui-Address` header (wallet address)
+    - Security: Backend filters results by address, no signature needed
+    - Benefit: Frictionless browsing after wallet connection
 
-    **For**: GET endpoints (listing deals, viewing dashboard, querying data)
+    **Level 2 (Write Operations)**
+    - For: POST/PUT endpoints (create deal, upload files, KPI calculations)
+    - Requires: `X-Sui-Address` header
+    - Flow: API returns unsigned transaction → User signs in wallet → Transaction executed on-chain
+    - Security: Full cryptographic verification via blockchain signatures
+    - Benefit: zkLogin compatible, user controls private keys
 
-    **Requirements**:
-    - `X-Sui-Address`: User's Sui wallet address (0x + 64 hex characters)
+    ## Data Flow
 
-    **Security**:
-    - Backend validates address format
-    - Backend filters all queries to only return data accessible to the provided address
-    - Works with all wallet types (traditional wallets + zkLogin)
-
-    **No signature required** - provides frictionless browsing experience after wallet connection.
-
-    ### Level 2: Write Operations (On-Chain Signature)
-
-    **For**: POST/PUT endpoints that modify blockchain state (create deal, upload files, submit audit)
-
-    **Requirements**:
-    - `X-Sui-Address`: User's Sui wallet address
-
-    **Security**:
-    - API returns unsigned transaction bytes
-    - Frontend prompts user to sign transaction with their wallet
-    - Transaction is executed on-chain with full cryptographic verification
-    - Move smart contracts enforce all permissions and business logic
-
-    **User signs once per transaction** - only when making important state changes.
-
-    ### Why This Design?
-
-    - **Better UX**: No signature prompts for read operations
-    - **zkLogin Compatible**: Works with OAuth-based wallets (Google, Facebook)
-    - **Secure**: Write operations protected by blockchain signatures
-    - **Simple**: Stateless backend, no session management
-
-    ## Workflow
-
-    1. **Setup**: Buyer creates deal and sets earn-out parameters
-    2. **Data Upload**: Buyer uploads encrypted financial docs to Walrus (via upload relay)
-    3. **KPI Proposal**: After period ends, buyer proposes KPI value
-    4. **Verification**: Auditor decrypts docs, verifies calculations, attests KPI
-    5. **Settlement**: Buyer executes settlement, funds transferred to seller
+    1. Buyer creates deal on Sui blockchain with defined roles (buyer, seller, auditor)
+    2. Buyer uploads encrypted financial documents to Walrus via upload relay
+    3. Backend registers Walrus blob IDs on-chain for immutable proof
+    4. Auditor retrieves and decrypts blobs from Walrus to verify data
+    5. TEE computes KPI from Walrus data with cryptographic attestation
+    6. Smart contract executes settlement based on attested KPI
 
     ## API Organization
 
-    - **Deal Management**: Create and manage earn-out deals
-    - **Parameters**: Configure earn-out formulas and periods
-    - **Walrus**: Upload relay for encrypted file storage
-    - **Timeline**: View data submission history
-    - **KPI Management**: Propose and attest KPIs
-    - **Settlement**: Execute earn-out payments
-    - **Dashboard**: Aggregated view of deal status
+    - **Health**: System health check
+    - **Deals**: Create and query earn-out agreements
+    - **Dashboard**: Aggregated deal metrics and period summaries
+    - **Blobs**: Query registered Walrus blob references
+    - **Walrus**: Upload/download encrypted files to Walrus network
+    - **Nautilus**: TEE-based KPI calculation with attestation
 
   contact:
     name: API Support
@@ -115,26 +118,24 @@ servers:
     description: Production server (API v1)
 
 tags:
+  - name: Health
+    description: API health check endpoint. Returns operational status.
+
   - name: Deals
     description: |
-      Deal-related endpoints including creation, listing, dashboard, and blob management.
+      Create and query M&A earn-out agreements on Sui blockchain.
+      Includes deal creation, listing by role, single deal retrieval, dashboard metrics, and blob reference queries.
 
-      All operations under /deals/* route for managing M&A earn-out agreements on Sui blockchain.
   - name: Walrus
     description: |
-      Walrus decentralized storage endpoints for file upload and download.
+      Decentralized storage operations using Walrus Protocol.
+      Upload relay handles encryption (client/server modes) + Walrus upload + on-chain blob registration.
+      Download relay retrieves encrypted blobs for client-side decryption.
 
-      All operations under /walrus/* route with upload/download relays and Seal encryption integration.
   - name: Nautilus
     description: |
-      Nautilus KPI calculation endpoints.
-
-      All operations under /nautilus/* route for automated KPI calculations based on financial data.
-  - name: Health
-    description: |
-      API health check endpoint.
-
-      Returns the operational status of the API service.
+      TEE-based KPI calculation with cryptographic attestation.
+      Nautilus computes KPIs from Walrus data and generates 144-byte Ed25519 signed attestations.
 
 components:
   securitySchemes:
@@ -143,43 +144,30 @@ components:
       in: header
       name: X-Sui-Address
       description: |
-        **Authentication Level 1: Read Operations**
+        Level 1 Authentication for Read Operations (GET endpoints)
 
-        Sui wallet address of the authenticated user.
+        Format: Valid Sui address (0x + 64 hex characters)
+        Example: `0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890`
 
-        **Format**: Must be a valid Sui address (0x + 64 hex characters)
-
-        **Example**: `0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890`
-
-        **Used for**: GET endpoints (listing, querying, viewing data)
-
-        **Security**: Backend filters all results to only return data accessible to this address.
-
-        **No signature required** - this enables frictionless data browsing after wallet connection.
+        No signature required. Backend filters results by this address for access control.
+        Enables frictionless browsing and zkLogin compatibility.
 
     Level2Auth:
       type: apiKey
       in: header
       name: X-Sui-Address
       description: |
-        **Authentication Level 2: Write Operations**
+        Level 2 Authentication for Write Operations (POST/PUT endpoints)
 
-        Sui wallet address of the user initiating the transaction.
+        Format: Valid Sui address (0x + 64 hex characters)
 
-        **Format**: Must be a valid Sui address (0x + 64 hex characters)
+        Security Flow:
+        1. API validates address and builds unsigned transaction bytes
+        2. API returns transaction to frontend
+        3. User signs transaction in wallet
+        4. Transaction executed on-chain with full cryptographic verification
 
-        **Example**: `0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890`
-
-        **Used for**: POST/PUT endpoints that create or modify blockchain state
-
-        **Security Flow**:
-        1. API validates address format
-        2. API builds unsigned transaction bytes
-        3. API returns transaction to frontend
-        4. User signs transaction in wallet (cryptographic proof of identity)
-        5. Transaction is executed on-chain with full signature verification
-
-        **Transaction signing happens in wallet** - API does not verify signatures directly.
+        Signature verification happens on Sui blockchain, not in API.
 
   schemas: {}
 

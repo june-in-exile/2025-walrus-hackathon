@@ -1,27 +1,31 @@
 paths:
-  /api/v1/tee/compute:
+  /tee/compute:
     post:
-      summary: Compute KPI with TEE Attestation
+      summary: Compute KPI with mock TEE attestation (testing endpoint)
       description: |
-        Calculate cumulative KPI from multiple financial documents with cryptographic attestation.
+        Calculate cumulative KPI from financial documents with mock cryptographic attestation.
 
-        **WARNING**: This endpoint currently uses MOCK TEE attestation for testing purposes.
-        The attestation is NOT cryptographically secure and should NOT be used in production.
+        WARNING: Currently uses MOCK TEE for testing. NOT cryptographically secure for production.
+
+        Technical Details:
+        - Processes multiple financial document types (Journal Entry, Fixed Assets, Payroll, Overhead)
+        - Returns 144-byte attestation format compatible with Sui Move verification
+        - Computation hash (SHA-256) included for input verification
 
         Supported document types:
         - Journal Entry: Sales revenue extraction
         - Fixed Assets Register: Depreciation calculation
         - Payroll Expense: Gross pay deduction
-        - Overhead Report: Overhead allocation (10%)
+        - Overhead Report: 10% overhead allocation
 
-        The service returns:
-        - Cumulative KPI value
-        - 144-byte attestation for blockchain verification
-        - Computation hash (SHA-256 of input documents)
+        Use Cases:
+        - Development and testing without real TEE infrastructure
+        - Validating KPI calculation logic before production deployment
+        - Frontend integration testing with attestation format
 
       operationId: computeKPI
       tags:
-        - TEE
+        - Nautilus
       requestBody:
         required: true
         content:
@@ -37,26 +41,24 @@ paths:
                   minItems: 1
                   items:
                     type: object
-                    description: Financial document (structure varies by type)
                   example:
                     - journalEntryId: "JE-2025-001"
                       credits:
                         - account: "Sales Revenue"
-                          amount: 50000.0
+                          amount: 50000
                     - employeeDetails: {}
-                      grossPay: 20000.0
+                      grossPay: 20000
                 operation:
                   type: string
                   enum: [simple, with_attestation]
                   default: with_attestation
                   description: |
-                    Computation mode:
-                    - simple: Calculate KPI only (no attestation)
-                    - with_attestation: Calculate KPI with mock TEE attestation
+                    simple: Calculate KPI only
+                    with_attestation: Calculate with mock TEE attestation (default)
                 initial_kpi:
                   type: number
                   default: 0
-                  description: Initial KPI value (for incremental calculations)
+                  description: Initial KPI value for incremental calculations
       responses:
         '200':
           description: KPI computation successful
@@ -67,26 +69,45 @@ paths:
                 properties:
                   success:
                     type: boolean
-                    example: true
                   data:
                     type: object
                     properties:
                       kpi_result:
-                        $ref: '#/components/schemas/KPIResult'
+                        type: object
+                        properties:
+                          kpi:
+                            type: number
+                          document_count:
+                            type: integer
+                          breakdown:
+                            type: array
+                            items:
+                              type: object
                       attestation:
-                        $ref: '#/components/schemas/TEEAttestation'
+                        type: object
+                        description: Mock TEE attestation metadata
                       attestation_bytes:
                         type: array
                         items:
                           type: integer
-                          minimum: 0
-                          maximum: 255
                         minItems: 144
                         maxItems: 144
                         description: 144-byte attestation for blockchain submission
                   message:
                     type: string
-                    example: "KPI calculated with mock TEE attestation"
+              example:
+                success: true
+                data:
+                  kpi_result:
+                    kpi: 30000
+                    document_count: 2
+                    breakdown:
+                      - type: "journal_entry"
+                        impact: 50000
+                      - type: "payroll"
+                        impact: -20000
+                  attestation_bytes: [0, 1, 2, 3, ...]
+                message: "KPI calculated with mock TEE attestation"
         '400':
           description: Invalid request (missing or invalid documents)
           content:
@@ -96,10 +117,8 @@ paths:
                 properties:
                   success:
                     type: boolean
-                    example: false
                   error:
                     type: string
-                    example: "Invalid request: documents must be an array"
         '500':
           description: Internal server error during computation
           content:
@@ -109,19 +128,15 @@ paths:
                 properties:
                   success:
                     type: boolean
-                    example: false
                   error:
-                    type: string
-                    example: "Internal server error during KPI computation"
-                  message:
                     type: string
 
     get:
-      summary: Get TEE Compute API Information
-      description: Returns API documentation and usage examples
+      summary: Get TEE Compute API information
+      description: Returns API documentation and usage examples for the mock TEE compute endpoint.
       operationId: getTEEComputeInfo
       tags:
-        - TEE
+        - Nautilus
       responses:
         '200':
           description: API information

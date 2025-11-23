@@ -155,7 +155,7 @@ export function useKPICalculation(): UseKPICalculationReturn {
         throw new Error('NEXT_PUBLIC_EARNOUT_PACKAGE_ID is not configured');
       }
 
-      const documents: any[] = [];
+      const documents: unknown[] = [];
       const processedAuditedDocs: {
         blobId: string;
         filename: string;
@@ -195,7 +195,7 @@ export function useKPICalculation(): UseKPICalculationReturn {
           let parsedDoc;
           try {
             parsedDoc = JSON.parse(jsonText);
-          } catch (parseError) {
+          } catch (_parseError) {
             // Not a JSON file (could be PDF, image, etc.)
             const filename = auditedBlobInfo?.metadata?.filename || 'Unknown';
             console.log(`⏭️  Skipping non-JSON file: ${filename} (blob: ${blob.blobId})`);
@@ -239,10 +239,8 @@ export function useKPICalculation(): UseKPICalculationReturn {
         calculationResult = {
           kpi_result: {
             kpi: 0,
-            revenue: 0,
-            expenses: 0,
-            net_profit: 0,
-            kpi_type: 'net_profit',
+            change: 0,
+            file_type: 'NoJsonDocuments',
           },
           attestation: {
             kpi_value: 0,
@@ -251,7 +249,7 @@ export function useKPICalculation(): UseKPICalculationReturn {
             tee_public_key: new Uint8Array(32), // Empty key
             signature: new Uint8Array(64), // Empty signature
           },
-          attestation_bytes: new Uint8Array(0), // Empty attestation
+          attestation_bytes: [], // Empty attestation (number[])
           documentsProcessed: 0,
           calculationTime: Date.now() - startTime,
           auditedDocuments: processedAuditedDocs,
@@ -419,11 +417,18 @@ export function useKPICalculation(): UseKPICalculationReturn {
           throw new Error('Failed to fetch deal settlement status');
         }
 
-        const dealFields = dealObject.data.content.fields as any;
-        const isSettled = dealFields.is_settled as boolean;
-        const settledAmount = parseInt(dealFields.settled_amount as string);
-        const kpiThreshold = parseInt(dealFields.kpi_threshold as string);
-        const maxPayout = parseInt(dealFields.max_payout as string);
+        interface DealFields {
+          is_settled: boolean;
+          settled_amount: string;
+          kpi_threshold: string;
+          max_payout: string;
+        }
+
+        const dealFields = dealObject.data.content.fields as unknown as DealFields;
+        const isSettled = dealFields.is_settled;
+        const settledAmount = parseInt(dealFields.settled_amount);
+        const kpiThreshold = parseInt(dealFields.kpi_threshold);
+        const maxPayout = parseInt(dealFields.max_payout);
 
         // On-chain values are stored as integers (no conversion needed)
         // e.g., 900000 = $900,000

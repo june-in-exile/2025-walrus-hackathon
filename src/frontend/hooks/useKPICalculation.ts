@@ -187,10 +187,20 @@ export function useKPICalculation(): UseKPICalculationReturn {
             signPersonalMessage
           );
 
-          // Parse decrypted data as JSON
+          // Try to parse decrypted data as JSON
           const textDecoder = new TextDecoder();
           const jsonText = textDecoder.decode(decryptedData);
-          const parsedDoc = JSON.parse(jsonText);
+
+          // Attempt JSON parsing
+          let parsedDoc;
+          try {
+            parsedDoc = JSON.parse(jsonText);
+          } catch (parseError) {
+            // Not a JSON file (could be PDF, image, etc.)
+            const filename = auditedBlobInfo?.metadata?.filename || 'Unknown';
+            console.log(`⏭️  Skipping non-JSON file: ${filename} (blob: ${blob.blobId})`);
+            continue; // Skip this file and continue with next
+          }
 
           documents.push(parsedDoc);
 
@@ -207,76 +217,108 @@ export function useKPICalculation(): UseKPICalculationReturn {
 
           console.log(`✅ Audited blob ${blob.blobId} decrypted and parsed`);
         } catch (error) {
-          console.error(`Failed to decrypt/parse blob ${blob.blobId}:`, error);
+          console.error(`Failed to decrypt blob ${blob.blobId}:`, error);
           // Continue with other blobs
         }
       }
 
+      // Handle case when no valid JSON documents found
+      let calculationResult: KPICalculationResult;
+
       if (documents.length === 0) {
-        throw new Error('No valid JSON documents found after decryption');
+        console.warn('⚠️  No valid JSON documents found after decryption. KPI will be treated as 0.');
+
+        setProgress({
+          phase: 'calculating',
+          message: `No JSON documents found. Using default KPI value of 0.`,
+          documentsFound: 0,
+        });
+
+        // Create a default result with KPI = 0
+        // No TEE attestation since there's no actual calculation
+        calculationResult = {
+          kpi_result: {
+            kpi: 0,
+            revenue: 0,
+            expenses: 0,
+            net_profit: 0,
+            kpi_type: 'net_profit',
+          },
+          attestation: {
+            kpi_value: 0,
+            computation_hash: new Uint8Array(32), // Empty hash
+            timestamp: Date.now(),
+            tee_public_key: new Uint8Array(32), // Empty key
+            signature: new Uint8Array(64), // Empty signature
+          },
+          attestation_bytes: new Uint8Array(0), // Empty attestation
+          documentsProcessed: 0,
+          calculationTime: Date.now() - startTime,
+          auditedDocuments: processedAuditedDocs,
+        };
+      } else {
+        setProgress({
+          phase: 'decrypting',
+          message: `Decrypted ${documents.length} audited documents`,
+          documentsFound: documents.length,
+        });
+
+        // Phase 3: Calculate KPI using TEE API
+        setProgress({
+          phase: 'calculating',
+          message: `Calculating KPI from ${documents.length} audited documents...`,
+          documentsFound: documents.length,
+        });
+
+        // Call TEE API
+        const response = await fetch('/api/v1/tee/compute', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            documents,
+            operation: 'with_attestation',
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(
+            errorData.error || `KPI calculation failed: ${response.statusText}`
+          );
+        }
+
+        const responseData = await response.json();
+
+        if (!responseData.success || !responseData.data) {
+          throw new Error(responseData.error || 'KPI calculation failed');
+        }
+
+        // Parse TEE response
+        const teeResult = responseData.data;
+
+        // Convert hex strings to Uint8Array
+        const hexToUint8Array = (hex: string): Uint8Array => {
+          const bytes = hex.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || [];
+          return new Uint8Array(bytes);
+        };
+
+        calculationResult = {
+          kpi_result: teeResult.kpi_result,
+          attestation: {
+            kpi_value: teeResult.attestation.kpi_value,
+            computation_hash: hexToUint8Array(teeResult.attestation.computation_hash),
+            timestamp: teeResult.attestation.timestamp,
+            tee_public_key: hexToUint8Array(teeResult.attestation.tee_public_key),
+            signature: hexToUint8Array(teeResult.attestation.signature),
+          },
+          attestation_bytes: teeResult.attestation_bytes,
+          documentsProcessed: documents.length,
+          calculationTime: Date.now() - startTime,
+          auditedDocuments: processedAuditedDocs,
+        };
       }
-
-      setProgress({
-        phase: 'decrypting',
-        message: `Decrypted ${documents.length} audited documents`,
-        documentsFound: documents.length,
-      });
-
-      // Phase 3: Calculate KPI using TEE API
-      setProgress({
-        phase: 'calculating',
-        message: `Calculating KPI from ${documents.length} audited documents...`,
-        documentsFound: documents.length,
-      });
-
-      // Call TEE API
-      const response = await fetch('/api/v1/tee/compute', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          documents,
-          operation: 'with_attestation',
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(
-          errorData.error || `KPI calculation failed: ${response.statusText}`
-        );
-      }
-
-      const responseData = await response.json();
-
-      if (!responseData.success || !responseData.data) {
-        throw new Error(responseData.error || 'KPI calculation failed');
-      }
-
-      // Parse TEE response
-      const teeResult = responseData.data;
-
-      // Convert hex strings to Uint8Array
-      const hexToUint8Array = (hex: string): Uint8Array => {
-        const bytes = hex.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || [];
-        return new Uint8Array(bytes);
-      };
-
-      const calculationResult: KPICalculationResult = {
-        kpi_result: teeResult.kpi_result,
-        attestation: {
-          kpi_value: teeResult.attestation.kpi_value,
-          computation_hash: hexToUint8Array(teeResult.attestation.computation_hash),
-          timestamp: teeResult.attestation.timestamp,
-          tee_public_key: hexToUint8Array(teeResult.attestation.tee_public_key),
-          signature: hexToUint8Array(teeResult.attestation.signature),
-        },
-        attestation_bytes: teeResult.attestation_bytes,
-        documentsProcessed: documents.length,
-        calculationTime: Date.now() - startTime,
-        auditedDocuments: processedAuditedDocs,
-      };
 
       console.log('✅ KPI Calculation Complete:', {
         kpi: calculationResult.kpi_result.kpi,

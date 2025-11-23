@@ -3,9 +3,15 @@ paths:
     get:
       operationId: getHealthCheck
       summary: Health check endpoint
-      description: Returns the health status of the API
+      description: |
+        Returns the health status of the API
+
+        **Authentication**: Level 0 (Public)
+        - No authentication required
+        - Publicly accessible for monitoring and health checks
       tags:
         - Health
+      security: []
       responses:
         '200':
           description: API is healthy

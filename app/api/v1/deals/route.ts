@@ -1,115 +1,38 @@
 /**
  * Deals API Route
  *
- * POST /api/v1/deals - Create a new earn-out deal
- * GET /api/v1/deals - List deals for current user (TODO)
+ * POST /api/v1/deals - Create a new earn-out deal (Level 2: Write operation)
+ * GET /api/v1/deals - List deals for current user (Level 1: Read operation)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyPersonalMessageSignature } from '@mysten/sui/verify';
 import { suiService } from '@/src/backend/services/sui-service';
-
-// Maximum age for signature timestamp (5 minutes)
-const SIGNATURE_MAX_AGE_MS = 5 * 60 * 1000;
-
-/**
- * Verify Sui personal message signature
- */
-async function verifySignature(
-  address: string,
-  signature: string,
-  signedMessage: string
-): Promise<{ valid: boolean; error?: string }> {
-  try {
-    // Parse timestamp from signed message
-    const timestamp = Date.parse(signedMessage);
-    if (isNaN(timestamp)) {
-      return {
-        valid: false,
-        error: 'Invalid signature message format: expected ISO timestamp',
-      };
-    }
-
-    // Check timestamp freshness (prevent replay attacks)
-    const now = Date.now();
-    const age = now - timestamp;
-
-    if (age > SIGNATURE_MAX_AGE_MS) {
-      return {
-        valid: false,
-        error: `Signature expired: message is ${Math.round(age / 1000)} seconds old (max: ${SIGNATURE_MAX_AGE_MS / 1000}s)`,
-      };
-    }
-
-    // Reject signatures from the future (clock skew tolerance: 30 seconds)
-    if (age < -30000) {
-      return {
-        valid: false,
-        error: 'Invalid signature: message timestamp is in the future',
-      };
-    }
-
-    // Convert message to bytes for verification
-    const messageBytes = new TextEncoder().encode(signedMessage);
-
-    // Verify the signature using Sui SDK
-    const publicKey = await verifyPersonalMessageSignature(messageBytes, signature);
-
-    // Check if the public key matches the claimed address
-    const recoveredAddress = publicKey.toSuiAddress();
-    if (recoveredAddress !== address) {
-      return {
-        valid: false,
-        error: `Address mismatch: signature from ${recoveredAddress}, expected ${address}`,
-      };
-    }
-
-    return { valid: true };
-  } catch (error) {
-    console.error('Signature verification failed:', error);
-    return {
-      valid: false,
-      error: error instanceof Error ? error.message : 'Signature verification failed',
-    };
-  }
-}
+import {
+  authenticateReadOperation,
+  authenticateWriteOperation,
+  createAuthErrorResponse,
+} from '@/src/backend/middleware/auth';
 
 /**
  * POST /api/v1/deals
  *
  * Create a new earn-out deal. Returns unsigned transaction bytes for
  * the frontend to sign with the user's wallet.
+ *
+ * Authentication: Level 2 (Write) - Validates address, transaction signed on-chain
  */
 export async function POST(request: NextRequest) {
   try {
-    // Extract authentication headers
-    const userAddress = request.headers.get('X-Sui-Address');
-    const signature = request.headers.get('X-Sui-Signature');
-    const signedMessage = request.headers.get('X-Sui-Signature-Message');
-
-    if (!userAddress || !signature || !signedMessage) {
+    // Authenticate: Level 2 (Write operation)
+    const authResult = authenticateWriteOperation(request);
+    if (!authResult.authenticated) {
       return NextResponse.json(
-        {
-          error: 'UnauthorizedError',
-          message: 'Missing authentication headers (X-Sui-Address, X-Sui-Signature, X-Sui-Signature-Message)',
-          statusCode: 401,
-        },
-        { status: 401 }
+        createAuthErrorResponse(authResult),
+        { status: authResult.errorCode || 401 }
       );
     }
 
-    // Verify signature
-    const verificationResult = await verifySignature(userAddress, signature, signedMessage);
-    if (!verificationResult.valid) {
-      return NextResponse.json(
-        {
-          error: 'UnauthorizedError',
-          message: verificationResult.error || 'Invalid signature',
-          statusCode: 401,
-        },
-        { status: 401 }
-      );
-    }
+    const userAddress = authResult.address!;
 
     // Parse request body
     const body = await request.json();
@@ -300,37 +223,21 @@ export async function POST(request: NextRequest) {
  *
  * List all deals for the authenticated user.
  * Queries DealCreated events and filters by user's role.
+ *
+ * Authentication: Level 1 (Read) - Only requires wallet address, no signature
  */
 export async function GET(request: NextRequest) {
   try {
-    // Extract authentication headers
-    const userAddress = request.headers.get('X-Sui-Address');
-    const signature = request.headers.get('X-Sui-Signature');
-    const signedMessage = request.headers.get('X-Sui-Signature-Message');
-
-    if (!userAddress || !signature || !signedMessage) {
+    // Authenticate: Level 1 (Read operation)
+    const authResult = authenticateReadOperation(request);
+    if (!authResult.authenticated) {
       return NextResponse.json(
-        {
-          error: 'UnauthorizedError',
-          message: 'Missing authentication headers',
-          statusCode: 401,
-        },
-        { status: 401 }
+        createAuthErrorResponse(authResult),
+        { status: authResult.errorCode || 401 }
       );
     }
 
-    // Verify signature
-    const verificationResult = await verifySignature(userAddress, signature, signedMessage);
-    if (!verificationResult.valid) {
-      return NextResponse.json(
-        {
-          error: 'UnauthorizedError',
-          message: verificationResult.error || 'Invalid signature',
-          statusCode: 401,
-        },
-        { status: 401 }
-      );
-    }
+    const userAddress = authResult.address!;
 
     // Parse query parameters
     const { searchParams } = new URL(request.url);

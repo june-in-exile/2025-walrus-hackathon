@@ -1,53 +1,22 @@
 /**
  * Hook for creating new deals
  *
+ * Authentication: Level 2 (Write) - Only requires wallet address, transaction signed on-chain
+ *
  * Flow:
- * 1. Sign a timestamp message for authentication
- * 2. Call POST /api/v1/deals with the signature
- * 3. Get back unsigned transaction bytes
- * 4. Execute the transaction with wallet
+ * 1. Call POST /api/v1/deals with wallet address
+ * 2. Get back unsigned transaction bytes
+ * 3. Execute the transaction with wallet (user signs here)
  */
 
 import { useState, useCallback } from 'react';
 import { Transaction } from '@mysten/sui/transactions';
 import {
   useSignAndExecuteTransaction,
-  useSignPersonalMessage,
   useCurrentAccount,
 } from '@mysten/dapp-kit';
 import { fromHex } from '@mysten/sui/utils';
 import { toast } from 'sonner';
-
-// Shared signature cache (same as useDeals and useDashboard)
-interface SignatureCache {
-  signature: string;
-  message: string;
-  timestamp: number;
-  address: string;
-}
-
-const SIGNATURE_CACHE_DURATION = 4 * 60 * 1000;
-const SIGNATURE_CACHE_KEY = 'sui-signature-cache';
-
-function getPersistedSignatureCache(): SignatureCache | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const cached = sessionStorage.getItem(SIGNATURE_CACHE_KEY);
-    if (!cached) return null;
-    return JSON.parse(cached) as SignatureCache;
-  } catch {
-    return null;
-  }
-}
-
-function setPersistedSignatureCache(cache: SignatureCache): void {
-  if (typeof window === 'undefined') return;
-  try {
-    sessionStorage.setItem(SIGNATURE_CACHE_KEY, JSON.stringify(cache));
-  } catch {
-    // Ignore storage errors
-  }
-}
 
 interface CreateDealOptions {
   agreementBlobId: string;
@@ -76,7 +45,6 @@ interface UseCreateDealReturn {
 
 export function useCreateDeal(): UseCreateDealReturn {
   const currentAccount = useCurrentAccount();
-  const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
   const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction();
 
   const [isCreating, setIsCreating] = useState(false);
@@ -115,39 +83,7 @@ export function useCreateDeal(): UseCreateDealReturn {
       setError(null);
 
       try {
-        // 1. Get or create auth signature (reuse cached signature if available)
-        let signature: string;
-        let timestamp: string;
-
-        const cache = getPersistedSignatureCache();
-        const now = Date.now();
-
-        if (cache && cache.address === currentAccount.address && now - cache.timestamp < SIGNATURE_CACHE_DURATION) {
-          // Reuse cached signature
-          signature = cache.signature;
-          timestamp = cache.message;
-        } else {
-          // Sign new timestamp for authentication
-          timestamp = new Date().toISOString();
-          const messageBytes = new TextEncoder().encode(timestamp);
-
-          toast.info('Please sign the authentication message in your wallet');
-
-          const result = await signPersonalMessage({
-            message: messageBytes,
-          });
-          signature = result.signature;
-
-          // Cache the signature
-          setPersistedSignatureCache({
-            signature,
-            message: timestamp,
-            timestamp: now,
-            address: currentAccount.address,
-          });
-        }
-
-        // 2. Call API to build transaction
+        // 1. Call API to build transaction (no signature required)
         toast.loading('Creating deal transaction...', { id: 'create-deal' });
 
         const response = await fetch('/api/v1/deals', {
@@ -155,8 +91,6 @@ export function useCreateDeal(): UseCreateDealReturn {
           headers: {
             'Content-Type': 'application/json',
             'X-Sui-Address': currentAccount.address,
-            'X-Sui-Signature': signature,
-            'X-Sui-Signature-Message': timestamp,
           },
           body: JSON.stringify({
             agreementBlobId,
@@ -184,7 +118,7 @@ export function useCreateDeal(): UseCreateDealReturn {
 
         const data = await response.json();
 
-        // 3. Check if we got transaction bytes
+        // 2. Check if we got transaction bytes
         if (!data.transaction?.txBytes) {
           throw new Error('No transaction bytes received from API');
         }
@@ -192,12 +126,12 @@ export function useCreateDeal(): UseCreateDealReturn {
         toast.dismiss('create-deal');
         toast.info('Please approve the transaction in your wallet');
 
-        // 4. Execute the transaction
+        // 3. Execute the transaction (user signs here)
         // Convert hex txBytes to Uint8Array and deserialize
         const txBytes = fromHex(data.transaction.txBytes);
         const tx = Transaction.from(txBytes);
 
-        // 4. Execute the transaction with a cleaner async/await pattern
+        // Sign and execute on-chain
         const result = await signAndExecuteTransaction({
           transaction: tx,
         });
@@ -208,17 +142,17 @@ export function useCreateDeal(): UseCreateDealReturn {
         });
         onSuccess?.(result.digest);
       } catch (err) {
-        // This catch block now handles errors from the entire process,
-        // including signing and transaction execution.
+        // This catch block handles errors from the entire process,
+        // including transaction building and execution.
         toast.dismiss('create-deal');
         const error = err instanceof Error ? err : new Error('Unknown error');
         setError(error);
         console.error('Create deal failed:', error);
 
-        // Handle user rejection from either signing or transaction
+        // Handle user rejection of transaction
         if (error.message.includes('rejected') || error.message.includes('cancelled')) {
           toast.error('Operation cancelled', {
-            description: 'You cancelled the request in your wallet',
+            description: 'You cancelled the transaction in your wallet',
           });
         } else {
           toast.error('Failed to create deal', {
@@ -230,7 +164,7 @@ export function useCreateDeal(): UseCreateDealReturn {
         setIsCreating(false);
       }
     },
-    [currentAccount, signPersonalMessage, signAndExecuteTransaction]
+    [currentAccount, signAndExecuteTransaction]
   );
 
   return {

@@ -43,8 +43,8 @@ export async function GET(
           return {
             ...ref,
             metadata: {
-                ...(ref as any).metadata,
-                filename: 'Error reading filename' // Indicate that filename could not be read
+              ...(ref as any).metadata,
+              filename: 'Error reading filename' // Indicate that filename could not be read
             }
           };
         }

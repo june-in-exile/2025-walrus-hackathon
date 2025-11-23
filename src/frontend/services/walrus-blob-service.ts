@@ -1,3 +1,5 @@
+import type { SuiClient } from '@mysten/sui/client';
+
 /**
  * Walrus Blob Service (Frontend)
  *
@@ -6,17 +8,16 @@
 
 export interface BlobDownloadResult {
   blobId: string;
-  data: any; // Parsed JSON data
-  dataType: string; // e.g., "JournalEntry", "FixedAssetsRegister"
+  encryptedData: Uint8Array; // Encrypted binary data from Walrus
   success: boolean;
   error?: string;
 }
 
 export interface BlobRef {
-  blob_id: string;
-  data_type?: string; // Optional: from Walrus metadata
-  uploaded_at?: number;
-  uploader?: string;
+  blobId: string;
+  dataType?: string; // Optional: from Walrus metadata
+  uploadedAt?: string;
+  uploaderAddress?: string;
 }
 
 export interface DownloadProgress {
@@ -30,38 +31,41 @@ export interface DownloadProgress {
  * Walrus Blob Download Service
  */
 export class WalrusBlobService {
+
   /**
-   * Download and process all blobs for a deal
+   * Download encrypted blobs from Walrus
    *
    * Strategy:
-   * 1. If blob has data_type metadata and it's not 'json', skip it
-   * 2. If blob has data_type='json' or no metadata, download it
-   * 3. Decrypt blob using Seal (via backend API)
-   * 4. Try to parse as JSON
-   * 5. Only return successfully parsed JSON blobs
+   * 1. If blob has dataType metadata and it's not 'json', skip it
+   * 2. If blob has dataType='json' or no metadata, download it
+   * 3. Download encrypted blob from backend API
+   * 4. Return encrypted binary data (caller responsible for decryption)
    *
    * @param dealId - Deal ID for access control
    * @param blobs - Array of blob references
+   * @param userAddress - User's Sui wallet address for authentication
    * @param onProgress - Progress callback
-   * @returns Array of successfully downloaded and parsed JSON blobs
+   * @returns Array of successfully downloaded encrypted blobs
    */
   async downloadAndProcessBlobs(
     dealId: string,
     blobs: BlobRef[],
+    userAddress: string,
     onProgress?: (progress: DownloadProgress) => void
   ): Promise<BlobDownloadResult[]> {
     const results: BlobDownloadResult[] = [];
     const total = blobs.length;
 
+
     // Filter blobs: skip non-JSON types if metadata exists
     const blobsToDownload = blobs.filter((blob) => {
-      // If no data_type metadata, we need to download and check
-      if (!blob.data_type) return true;
+      // If no dataType metadata, we need to download and check
+      if (!blob.dataType) return true;
 
       // Skip known non-JSON types
       const nonJsonTypes = ['image', 'pdf', 'binary', 'text'];
-      if (nonJsonTypes.includes(blob.data_type.toLowerCase())) {
-        console.log(`Skipping blob ${blob.blob_id}: type=${blob.data_type}`);
+      if (nonJsonTypes.includes(blob.dataType.toLowerCase())) {
+        console.log(`Skipping blob ${blob.blobId}: type=${blob.dataType}`);
         return false;
       }
 
@@ -82,15 +86,18 @@ export class WalrusBlobService {
         total,
         downloaded: i,
         processed: results.length,
-        current: blob.blob_id,
+        current: blob.blobId,
       });
 
       try {
-        // Download and decrypt blob via backend API
+        // Download encrypted blob from backend API
         const response = await fetch(
-          `/api/v1/walrus/download/${blob.blob_id}?dealId=${dealId}`,
+          `/api/v1/walrus/download/${blob.blobId}?dealId=${dealId}`,
           {
             method: 'GET',
+            headers: {
+              'X-Sui-Address': userAddress,
+            },
           }
         );
 
@@ -98,46 +105,22 @@ export class WalrusBlobService {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
-        // Try to parse as JSON
-        let parsedData: any;
-        const contentType = response.headers.get('content-type');
-
-        if (contentType?.includes('application/json')) {
-          // Response is already JSON
-          parsedData = await response.json();
-        } else {
-          // Try to parse text as JSON
-          const text = await response.text();
-          try {
-            parsedData = JSON.parse(text);
-          } catch {
-            // Not valid JSON, skip this blob
-            console.log(
-              `Blob ${blob.blob_id} is not valid JSON, skipping`
-            );
-            continue;
-          }
-        }
-
-        // Determine data type from parsed JSON
-        const dataType = this.identifyDataType(parsedData);
+        // Get encrypted binary data
+        const arrayBuffer = await response.arrayBuffer();
+        const encryptedData = new Uint8Array(arrayBuffer);
 
         results.push({
-          blobId: blob.blob_id,
-          data: parsedData,
-          dataType,
+          blobId: blob.blobId,
+          encryptedData,
           success: true,
         });
 
-        console.log(
-          `✅ Blob ${blob.blob_id} downloaded and parsed (type: ${dataType})`
-        );
+        console.log(`✅ Blob ${blob.blobId} downloaded (${encryptedData.length} bytes)`);
       } catch (error) {
-        console.error(`Failed to download blob ${blob.blob_id}:`, error);
+        console.error(`Failed to download blob ${blob.blobId}:`, error);
         results.push({
-          blobId: blob.blob_id,
-          data: null,
-          dataType: 'Unknown',
+          blobId: blob.blobId,
+          encryptedData: new Uint8Array(0),
           success: false,
           error: error instanceof Error ? error.message : 'Download failed',
         });
@@ -151,50 +134,13 @@ export class WalrusBlobService {
       processed: results.length,
     });
 
-    // Return only successful JSON blobs
+    // Return only successful downloads
     const successfulBlobs = results.filter((r) => r.success);
     console.log(
-      `Downloaded ${successfulBlobs.length}/${blobsToDownload.length} JSON blobs`
+      `Downloaded ${successfulBlobs.length}/${blobsToDownload.length} encrypted blobs`
     );
 
     return successfulBlobs;
-  }
-
-  /**
-   * Identify financial document type from parsed JSON
-   *
-   * Matches the logic in kpi-calculation-service.ts
-   */
-  private identifyDataType(data: any): string {
-    if (!data || typeof data !== 'object') {
-      return 'Unknown';
-    }
-
-    // Journal Entry
-    if (data.journalEntryId !== undefined) {
-      return 'JournalEntry';
-    }
-
-    // Fixed Assets Register
-    if (
-      Array.isArray(data.assetList) &&
-      data.assetList.length > 0 &&
-      data.assetList[0].assetID !== undefined
-    ) {
-      return 'FixedAssetsRegister';
-    }
-
-    // Payroll Expense
-    if (data.employeeDetails !== undefined) {
-      return 'PayrollExpense';
-    }
-
-    // Overhead Report
-    if (data.reportTitle === 'Corporate Overhead Report') {
-      return 'OverheadReport';
-    }
-
-    return 'Unknown';
   }
 
   /**
@@ -202,36 +148,24 @@ export class WalrusBlobService {
    */
   async getDealBlobs(dealId: string): Promise<BlobRef[]> {
     try {
-      // TODO: Replace with actual API endpoint
-      // For now, we'll use the dashboard API to get period blobs
-      const response = await fetch(`/api/v1/deals/${dealId}/dashboard`);
+      const token = localStorage.getItem('token');
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      // Using the correct API endpoint for blobs
+      const response = await fetch(`/api/v1/deals/${dealId}/blobs`, {
+        headers,
+      });
 
       if (!response.ok) {
         throw new Error(`Failed to fetch deal data: ${response.statusText}`);
       }
 
-      const dashboard = await response.json();
-
-      // Extract all blobs from all periods
-      const allBlobs: BlobRef[] = [];
-
-      if (dashboard.periodsSummary) {
-        for (const period of dashboard.periodsSummary) {
-          if (period.walrus_blobs && Array.isArray(period.walrus_blobs)) {
-            for (const blob of period.walrus_blobs) {
-              allBlobs.push({
-                blob_id: blob.blob_id,
-                data_type: blob.data_type,
-                uploaded_at: blob.uploaded_at,
-                uploader: blob.uploader,
-              });
-            }
-          }
-        }
-      }
-
-      console.log(`Found ${allBlobs.length} blobs for deal ${dealId}`);
-      return allBlobs;
+      return await response.json();
     } catch (error) {
       console.error('Failed to get deal blobs:', error);
       throw error;

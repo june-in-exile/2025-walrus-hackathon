@@ -111,8 +111,8 @@ info:
 servers:
   - url: http://localhost:3000/api/v1
     description: Development server (API v1)
-  - url: https://api.earnout.example.com/api/v1
-    description: Production server (API v1, future)
+  - url: https://ma-earnout-2025walrushackathon.vercel.app/api/v1
+    description: Production server (API v1)
 
 tags:
   - name: Deals

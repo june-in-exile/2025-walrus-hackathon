@@ -1,0 +1,194 @@
+paths:
+  /deals/{dealId}/timeline:
+    get:
+      summary: Get chronological timeline of all data uploads for a deal
+      description: |
+        **Purpose**: View all Walrus blob uploads for a deal in chronological order
+
+        **Business Logic**:
+        - Retrieves all blob references registered on-chain for this deal
+        - Sorts chronologically by upload timestamp
+        - Enriches with metadata (period names, uploader info, file types)
+        - Supports filtering by period, data type, and date range
+        - Provides pagination for large datasets
+
+        **Use Cases**:
+        - **Buyer**: Review submission history and ensure completeness
+        - **Seller**: Monitor that buyer is submitting data as promised
+        - **Auditor**: Identify which documents are available for verification
+
+        **Sui Integration**:
+        - Reads: Queries all Period.walrusBlobs arrays for this deal
+        - Events: Reads BlobRegistered events from Sui event indexer
+        - Caching: Results cached for 5 minutes, invalidated on new uploads
+
+        **Walrus Integration**:
+        - Metadata: Shows blob IDs and sizes (not content)
+        - Content: Blobs remain encrypted, viewable only after Seal decryption
+        - Storage: All referenced blobs are stored on Walrus network
+
+        **Seal Integration**:
+        - Access: Each blob's decryption controlled by earnout_seal_policy
+        - Roles: Buyer/Seller/Auditor can request decryption keys
+        - Policy: On-chain verification before key is released
+
+        **Access Control**:
+        - Role: All deal participants (buyer, seller, auditor)
+        - Public metadata: Timeline is visible to all participants
+        - Private content: File content requires Seal decryption
+      operationId: getDataTimeline
+      tags:
+        - Timeline
+      parameters:
+        - name: X-Sui-Address
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: '^0x[a-fA-F0-9]{64}$'
+        - name: X-Sui-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: dealId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^0x[a-fA-F0-9]{64}$'
+          description: Deal ID
+          example: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+        - name: periodId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by specific period
+          example: "period_2026"
+        - name: dataType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [
+              "revenue_journal",
+              "ebitda_report",
+              "expense_report",
+              "balance_sheet",
+              "cash_flow",
+              "kpi_calculation",
+              "audit_report",
+              "custom"
+            ]
+          description: Filter by data type
+          example: "revenue_journal"
+        - name: startDate
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Filter uploads after this date
+          example: "2026-01-01"
+        - name: endDate
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Filter uploads before this date
+          example: "2026-12-31"
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Maximum number of entries to return
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Number of entries to skip
+      responses:
+        '200':
+          description: Successfully retrieved timeline
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/walrus.yaml#/components/schemas/DataTimelineResponse'
+              example:
+                items:
+                  - timestamp: "2026-03-15T09:30:00Z"
+                    dataType: "revenue_journal"
+                    periodId: "period_2026"
+                    periodName: "2026 Fiscal Year"
+                    blobId: "blob_2Nf8pQz3Xm7Yk5Rd9Wv1Bc6Lt4Hs"
+                    size: 2048576
+                    filename: "revenue_q1_2026.csv"
+                    submittedBy: "0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+                    description: "Q1 2026 revenue journal"
+                  - timestamp: "2026-06-20T14:15:00Z"
+                    dataType: "revenue_journal"
+                    periodId: "period_2026"
+                    periodName: "2026 Fiscal Year"
+                    blobId: "blob_3Og9qRa4Yn8Zl6Se0Xw2Cd7Mu5It"
+                    size: 1835008
+                    filename: "revenue_q2_2026.csv"
+                    submittedBy: "0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+                    description: "Q2 2026 revenue journal"
+                  - timestamp: "2026-09-18T11:45:00Z"
+                    dataType: "revenue_journal"
+                    periodId: "period_2026"
+                    periodName: "2026 Fiscal Year"
+                    blobId: "blob_4Ph0rSb5Zo9Am7Tf1Yx3De8Nv6Ju"
+                    size: 2156544
+                    filename: "revenue_q3_2026.csv"
+                    submittedBy: "0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+                    description: "Q3 2026 revenue journal"
+                  - timestamp: "2026-12-20T16:00:00Z"
+                    dataType: "revenue_journal"
+                    periodId: "period_2026"
+                    periodName: "2026 Fiscal Year"
+                    blobId: "blob_5Qi1tTc6Ap0Bn8Ug2Zy4Ef9Ow7Kv"
+                    size: 2304512
+                    filename: "revenue_q4_2026.csv"
+                    submittedBy: "0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+                    description: "Q4 2026 revenue journal"
+                  - timestamp: "2026-12-28T10:30:00Z"
+                    dataType: "ebitda_report"
+                    periodId: "period_2026"
+                    periodName: "2026 Fiscal Year"
+                    blobId: "blob_6Rj2uUd7Bq1Co9Vh3Az5Fg0Px8Lw"
+                    size: 524288
+                    filename: "ebitda_fy2026.pdf"
+                    submittedBy: "0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+                    description: "FY2026 EBITDA calculation and supporting docs"
+                total: 5
+                hasMore: false
+                limit: 20
+                offset: 0
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/UnauthorizedError'
+        '403':
+          description: Forbidden - User not a participant
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/ForbiddenError'
+        '404':
+          description: Deal not found
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/errors.yaml#/components/schemas/NotFoundError'

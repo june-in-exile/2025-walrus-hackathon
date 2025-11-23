@@ -98,7 +98,7 @@ export function useDeals(role?: 'buyer' | 'seller' | 'auditor') {
       // User rejected or error occurred
       return null;
     }
-  }, [currentAccount?.address, signPersonalMessage]);
+  }, [currentAccount, signPersonalMessage]);
 
   return useQuery<DealListResponse>({
     queryKey: dealKeys.list(role || 'all'),

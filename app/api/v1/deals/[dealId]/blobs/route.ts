@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { suiService } from '@/src/backend/services/sui-service';
 import { walrusService } from '@/src/backend/services/walrus-service';
-import { config } from '@/src/shared/config/env';
 import type { BlobReference, DataType } from '@/src/shared/types/walrus';
 
 /**
@@ -19,28 +18,49 @@ export async function GET(
     // Get all on-chain blob references
     const onChainBlobRefs = await suiService.getDealBlobReferences(dealId);
 
-    // Augment with Walrus metadata (like filename, description)
-    const fullBlobRefs: BlobReference[] = await Promise.all(
+    // Fetch metadata from Walrus for each blob
+    const blobRefsWithMetadata = await Promise.all(
       onChainBlobRefs.map(async (ref) => {
-        // Use download to get the metadata envelope
-        const { metadata: walrusMetadata } = await walrusService.download(ref.blobId);
-        
-        return {
-          blobId: ref.blobId,
-          dataType: ref.dataType as DataType, // Assert type to fix mismatch
-          uploadedAt: ref.uploadedAt,
-          uploaderAddress: ref.uploaderAddress,
-          // size is not stored on-chain, omit or get from Walrus metadata if needed
-          metadata: walrusMetadata,
-        };
+        try {
+          // This is inefficient as it downloads the whole blob.
+          // A future optimization would be to have a method in WalrusService
+          // that only fetches the metadata header.
+          const walrusBlob = await walrusService.download(ref.blobId);
+    
+          return {
+            ...ref,
+            metadata: {
+              ...(ref as any).metadata, // Keep on-chain metadata
+              ...walrusBlob.metadata, // Add off-chain metadata from Walrus
+            },
+          };
+        } catch (error) {
+          console.error(`Failed to fetch metadata for blob ${ref.blobId}:`, error);
+          // Return the on-chain ref as a fallback
+          return {
+            ...ref,
+            metadata: {
+                ...(ref as any).metadata,
+                filename: 'Error reading filename' // Indicate that filename could not be read
+            }
+          };
+        }
       })
     );
 
-    // The simplified API now returns just the array of blob references.
-    // The sealPolicy can be fetched separately if needed by the client.
-    return NextResponse.json(fullBlobRefs);
+    // Return blob references with combined metadata
+    const blobRefs: BlobReference[] = blobRefsWithMetadata.map((ref) => ({
+      blobId: ref.blobId,
+      dataType: ref.dataType as DataType,
+      uploadedAt: ref.uploadedAt,
+      uploaderAddress: ref.uploaderAddress,
+      metadata: ref.metadata, // Use on-chain metadata if available
+    }));
+
+    return NextResponse.json(blobRefs);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`Error fetching blobs for deal ${dealId}:`, error);
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

@@ -84,46 +84,26 @@ servers:
     description: Production server (API v1, future)
 
 tags:
-  - name: Deal Management
+  - name: Deals
     description: |
-      Create, list, and manage M&A earn-out deals.
+      Deal-related endpoints including creation, listing, dashboard, and blob management.
 
-      Deals are on-chain agreements stored on Sui blockchain with buyer, seller, and auditor roles.
-  - name: Parameters
-    description: |
-      Configure earn-out parameters including periods, KPI types, and payout formulas.
-
-      Parameters are locked on-chain and become immutable after confirmation.
-  - name: Seal
-    description: |
-      Manage and retrieve Seal access control policies.
-
-      Seal enables end-to-end encryption and role-based access control, where authorization is verified by on-chain Sui smart contracts.
+      All operations under /deals/* route for managing M&A earn-out agreements on Sui blockchain.
   - name: Walrus
     description: |
-      Upload and download encrypted files to/from Walrus decentralized storage.
+      Walrus decentralized storage endpoints for file upload and download.
 
-      Upload/download relays reduce browser load and integrate with Seal for hybrid encryption.
-  - name: Timeline
+      All operations under /walrus/* route with upload/download relays and Seal encryption integration.
+  - name: Nautilus
     description: |
-      View chronological timeline of data uploads.
+      Nautilus KPI calculation endpoints.
 
-      Shows all Walrus blobs registered on-chain for a deal.
-  - name: KPI Management
+      All operations under /nautilus/* route for automated KPI calculations based on financial data.
+  - name: Health
     description: |
-      Propose and attest Key Performance Indicators.
+      API health check endpoint.
 
-      Buyer proposes KPIs, auditor verifies and attests after reviewing encrypted documents.
-  - name: Settlement
-    description: |
-      Execute earn-out settlements based on attested KPIs.
-
-      Transfers funds from buyer to seller according to on-chain formulas.
-  - name: Dashboard
-    description: |
-      Comprehensive dashboard view of deal status and health.
-
-      Aggregates data from Sui blockchain, Walrus metadata, and calculates health metrics.
+      Returns the operational status of the API service.
 
 components:
   securitySchemes:

@@ -7,7 +7,7 @@ const SwaggerUI = dynamic(() => import('swagger-ui-react'), { ssr: false });
 
 export default function ApiDocsPage() {
   return (
-    <div className="h-screen bg-white">
+    <div className="h-full bg-white">
       <SwaggerUI
         url="/api/openapi"
         persistAuthorization={true}

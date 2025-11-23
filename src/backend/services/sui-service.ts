@@ -98,25 +98,25 @@ export class SuiService {
 
       const fields = content.fields as Record<string, unknown>;
 
-      // Extract periods array from Deal
-      // Move struct: Deal { periods: vector<Period> }
-      const periods = fields.periods as Array<{
+      // Extract subperiods array from Deal
+      // Move struct: Deal { subperiods: vector<Subperiod> }
+      const subperiods = fields.subperiods as Array<{
         fields?: {
           walrus_blobs?: Array<{ fields?: { blob_id?: string } }>;
         };
       }> | undefined;
 
-      if (!periods || !Array.isArray(periods)) {
+      if (!subperiods || !Array.isArray(subperiods)) {
         if (debugConfig.sui) {
-          console.log('No periods field found in Deal object, returning empty list');
+          console.log('No subperiods field found in Deal object, returning empty list');
         }
         return [];
       }
 
-      // Extract blob IDs from all periods
+      // Extract blob IDs from all subperiods
       const blobIds: string[] = [];
-      for (const period of periods) {
-        const walrusBlobs = period.fields?.walrus_blobs;
+      for (const subperiod of subperiods) {
+        const walrusBlobs = subperiod.fields?.walrus_blobs;
         if (walrusBlobs && Array.isArray(walrusBlobs)) {
           for (const blob of walrusBlobs) {
             const blobId = blob.fields?.blob_id;
@@ -141,13 +141,129 @@ export class SuiService {
   }
 
   /**
+   * Query blob references for a specific subperiod
+   *
+   * Returns full blob reference data for a given subperiod
+   *
+   * Move struct hierarchy:
+   *   Deal { subperiods: vector<Subperiod> }
+   *   Subperiod { id: String, walrus_blobs: vector<WalrusBlobRef> }
+   *   WalrusBlobRef { blob_id, data_type, uploaded_at, uploader }
+   *
+   * @param dealId - Deal object ID on Sui
+   * @param subperiodId - Subperiod ID (e.g., "2025-11", "2025-Q4")
+   * @returns Array of on-chain blob references for the subperiod
+   */
+  async getSubperiodBlobReferences(dealId: string, subperiodId: string): Promise<OnChainBlobReference[]> {
+    try {
+      if (debugConfig.sui) {
+        console.log('Querying blob references for deal:', dealId, 'subperiod:', subperiodId);
+      }
+
+      // Check if earnout package is configured
+      if (!config.earnout.packageId) {
+        console.warn('EARNOUT_PACKAGE_ID not configured, cannot query on-chain blobs');
+        return [];
+      }
+
+      // Fetch the Deal object from blockchain
+      const dealObject = await this.client.getObject({
+        id: dealId,
+        options: {
+          showContent: true,
+          showType: true,
+        },
+      });
+
+      if (!dealObject.data) {
+        throw new Error(`Deal not found: ${dealId}`);
+      }
+
+      const content = dealObject.data.content;
+      if (!content || content.dataType !== 'moveObject') {
+        throw new Error('Invalid Deal object structure');
+      }
+
+      const fields = content.fields as Record<string, unknown>;
+
+      // Extract subperiods array from Deal
+      // Move struct: Deal { subperiods: vector<Subperiod> }
+      const subperiods = fields.subperiods as Array<{
+        fields?: {
+          id?: string;
+          walrus_blobs?: Array<{
+            fields?: {
+              blob_id?: string;
+              data_type?: string;
+              uploaded_at?: string;
+              uploader?: string;
+            };
+          }>;
+        };
+      }> | undefined;
+
+      if (!subperiods || !Array.isArray(subperiods)) {
+        if (debugConfig.sui) {
+          console.log('No subperiods field found in Deal object, returning empty list');
+        }
+        return [];
+      }
+
+      // Find the specific subperiod
+      const targetSubperiod = subperiods.find(
+        sp => sp.fields?.id === subperiodId
+      );
+
+      if (!targetSubperiod) {
+        if (debugConfig.sui) {
+          console.log(`Subperiod ${subperiodId} not found in deal ${dealId}`);
+        }
+        return [];
+      }
+
+      const walrusBlobs = targetSubperiod.fields?.walrus_blobs;
+      if (!walrusBlobs || !Array.isArray(walrusBlobs)) {
+        return [];
+      }
+
+      // Extract blob references
+      const blobReferences: OnChainBlobReference[] = [];
+      for (const blob of walrusBlobs) {
+        const blobFields = blob.fields;
+        if (blobFields) {
+          blobReferences.push({
+            blobId: blobFields.blob_id || '',
+            periodId: subperiodId,
+            dataType: blobFields.data_type || '',
+            uploadedAt: blobFields.uploaded_at
+              ? new Date(parseInt(blobFields.uploaded_at)).toISOString()
+              : new Date().toISOString(),
+            uploaderAddress: blobFields.uploader || '',
+          });
+        }
+      }
+
+      if (debugConfig.sui) {
+        console.log(`Found ${blobReferences.length} blob references for subperiod ${subperiodId}`);
+      }
+
+      return blobReferences;
+    } catch (error) {
+      console.error('Failed to query subperiod blob references:', error);
+      throw new Error(
+        `Failed to query on-chain blob data: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  /**
    * Query detailed blob references for a deal
    *
    * Returns full blob reference data including period, data type, etc.
    *
    * Move struct hierarchy:
-   *   Deal { periods: vector<Period> }
-   *   Period { id: String, walrus_blobs: vector<WalrusBlobRef> }
+   *   Deal { subperiods: vector<Subperiod> }
+   *   Subperiod { id: String, walrus_blobs: vector<WalrusBlobRef> }
    *   WalrusBlobRef { blob_id, data_type, uploaded_at, uploader }
    *
    * @param dealId - Deal object ID on Sui
@@ -185,9 +301,9 @@ export class SuiService {
 
       const fields = content.fields as Record<string, unknown>;
 
-      // Extract periods array from Deal
-      // Move struct: Deal { periods: vector<Period> }
-      const periods = fields.periods as Array<{
+      // Extract subperiods array from Deal
+      // Move struct: Deal { subperiods: vector<Subperiod> }
+      const subperiods = fields.subperiods as Array<{
         fields?: {
           id?: string;
           walrus_blobs?: Array<{
@@ -201,18 +317,18 @@ export class SuiService {
         };
       }> | undefined;
 
-      if (!periods || !Array.isArray(periods)) {
+      if (!subperiods || !Array.isArray(subperiods)) {
         if (debugConfig.sui) {
-          console.log('No periods field found in Deal object, returning empty list');
+          console.log('No subperiods field found in Deal object, returning empty list');
         }
         return [];
       }
 
-      // Extract blob references from all periods
+      // Extract blob references from all subperiods
       const blobReferences: OnChainBlobReference[] = [];
-      for (const period of periods) {
-        const periodId = period.fields?.id || '';
-        const walrusBlobs = period.fields?.walrus_blobs;
+      for (const subperiod of subperiods) {
+        const subperiodId = subperiod.fields?.id || '';
+        const walrusBlobs = subperiod.fields?.walrus_blobs;
 
         if (walrusBlobs && Array.isArray(walrusBlobs)) {
           for (const blob of walrusBlobs) {
@@ -220,7 +336,7 @@ export class SuiService {
             if (blobFields) {
               blobReferences.push({
                 blobId: blobFields.blob_id || '',
-                periodId: periodId,  // Derived from parent Period
+                periodId: subperiodId,  // Derived from parent Subperiod
                 dataType: blobFields.data_type || '',
                 uploadedAt: blobFields.uploaded_at
                   ? new Date(parseInt(blobFields.uploaded_at)).toISOString()
@@ -316,7 +432,7 @@ export class SuiService {
           const fields = content.fields as {
             data_id?: string;
             deal_id?: string;
-            period_id?: string;
+            subperiod_id?: string;
             uploader?: string;
             upload_timestamp?: string;
             audited?: boolean;
@@ -328,7 +444,7 @@ export class SuiService {
             id: recordId,
             dataId: fields.data_id || '',
             dealId: fields.deal_id || '',
-            periodId: fields.period_id || '',
+            periodId: fields.subperiod_id || '',
             uploader: fields.uploader || '',
             uploadTimestamp: fields.upload_timestamp ? parseInt(fields.upload_timestamp) : 0,
             audited: fields.audited || false,
@@ -435,20 +551,43 @@ export class SuiService {
    * Build unsigned transaction for creating a new deal
    *
    * Creates a Deal object on-chain with:
-   * - Deal name
+   * - Deal name and encrypted M&A agreement blob ID
    * - Buyer (sender), Seller, and Auditor addresses
-   * - Associated Whitelist for Seal encryption access control
+   * - Financial parameters (KPI threshold, max payout, headquarter allocation)
+   * - Assets with useful life for depreciation calculation
    *
+   * @param agreementBlobId - Walrus blob ID for encrypted M&A agreement
    * @param name - Deal name
    * @param sellerAddress - Seller's Sui address
    * @param auditorAddress - Auditor's Sui address
+   * @param startDateMs - Start date in milliseconds
+   * @param periodMonths - Earn-out period duration in months
+   * @param kpiThreshold - KPI target threshold
+   * @param maxPayout - Maximum payout amount
+   * @param headquarter - Headquarter expense allocation percentage (1-100)
+   * @param assetIds - Array of asset IDs
+   * @param assetUsefulLives - Array of asset useful lives in months
+   * @param subperiodIds - Array of subperiod identifiers
+   * @param subperiodStartDates - Array of subperiod start timestamps
+   * @param subperiodEndDates - Array of subperiod end timestamps
    * @param buyerAddress - Buyer's Sui address (transaction sender)
    * @returns Object with hex-encoded transaction bytes and estimated gas
    */
   async buildCreateDealTransaction(
+    agreementBlobId: string,
     name: string,
     sellerAddress: string,
     auditorAddress: string,
+    startDateMs: number,
+    periodMonths: number,
+    kpiThreshold: number,
+    maxPayout: number,
+    headquarter: number,
+    assetIds: string[],
+    assetUsefulLives: number[],
+    subperiodIds: string[],
+    subperiodStartDates: number[],
+    subperiodEndDates: number[],
     buyerAddress: string
   ): Promise<{ txBytes: string; estimatedGas: number }> {
     try {
@@ -459,10 +598,21 @@ export class SuiService {
       if (debugConfig.sui) {
         console.log('Building create_deal transaction');
         console.log('Package ID:', config.earnout.packageId);
+        console.log('Agreement Blob ID:', agreementBlobId);
         console.log('Name:', name);
         console.log('Buyer:', buyerAddress);
         console.log('Seller:', sellerAddress);
         console.log('Auditor:', auditorAddress);
+        console.log('Start Date (ms):', startDateMs);
+        console.log('Period Months:', periodMonths);
+        console.log('KPI Threshold:', kpiThreshold);
+        console.log('Max Payout:', maxPayout);
+        console.log('Headquarter:', headquarter);
+        console.log('Asset IDs:', assetIds);
+        console.log('Asset Useful Lives:', assetUsefulLives);
+        console.log('Subperiod IDs:', subperiodIds);
+        console.log('Subperiod Start Dates:', subperiodStartDates);
+        console.log('Subperiod End Dates:', subperiodEndDates);
       }
 
       const tx = new Transaction();
@@ -470,17 +620,40 @@ export class SuiService {
       // Call earnout::create_deal
       // Function signature from Move:
       // public fun create_deal(
+      //   agreement_blob_id: String,
       //   name: String,
       //   seller: address,
       //   auditor: address,
+      //   start_date: u64,
+      //   period_months: u64,
+      //   kpi_threshold: u64,
+      //   max_payout: u64,
+      //   headquarter: u64,
+      //   asset_ids: vector<String>,
+      //   asset_useful_lives: vector<u64>,
+      //   subperiod_ids: vector<String>,
+      //   subperiod_start_dates: vector<u64>,
+      //   subperiod_end_dates: vector<u64>,
       //   ctx: &mut TxContext
       // )
+
       tx.moveCall({
         target: `${config.earnout.packageId}::earnout::create_deal`,
         arguments: [
+          tx.pure.string(agreementBlobId),
           tx.pure.string(name),
           tx.pure.address(sellerAddress),
           tx.pure.address(auditorAddress),
+          tx.pure.u64(startDateMs),
+          tx.pure.u64(periodMonths),
+          tx.pure.u64(kpiThreshold),
+          tx.pure.u64(maxPayout),
+          tx.pure.u64(headquarter),
+          tx.pure.vector('string', assetIds),
+          tx.pure.vector('u64', assetUsefulLives),
+          tx.pure.vector('string', subperiodIds),
+          tx.pure.vector('u64', subperiodStartDates),
+          tx.pure.vector('u64', subperiodEndDates),
         ],
       });
 
@@ -522,9 +695,15 @@ export class SuiService {
     buyer: string;
     seller: string;
     auditor: string;
+    startDate: number;          // Unix timestamp in milliseconds
+    periodMonths: number;       // Total earn-out duration
+    kpiThreshold: number;       // Cumulative KPI target
+    maxPayout: number;          // Maximum payment amount
+    isSettled: boolean;
+    settledAmount: number;
     parametersLocked: boolean;
     whitelistId: string;
-    periods: unknown[];
+    subperiods: unknown[];      // Subperiods for document organization
   } | null> {
     try {
       if (debugConfig.sui) {
@@ -548,6 +727,17 @@ export class SuiService {
         return null;
       }
 
+      // Verify the Deal belongs to the current package
+      const objectType = dealObject.data.type;
+      const expectedType = `${config.earnout.packageId}::earnout::Deal`;
+
+      if (objectType !== expectedType) {
+        if (debugConfig.sui) {
+          console.log(`Deal ${dealId} belongs to different package. Expected: ${expectedType}, Got: ${objectType}`);
+        }
+        return null;
+      }
+
       const fields = content.fields as Record<string, unknown>;
 
       return {
@@ -556,9 +746,15 @@ export class SuiService {
         buyer: fields.buyer as string || '',
         seller: fields.seller as string || '',
         auditor: fields.auditor as string || '',
+        startDate: Number(fields.start_date) || 0,
+        periodMonths: Number(fields.period_months) || 0,
+        kpiThreshold: Number(fields.kpi_threshold) || 0,
+        maxPayout: Number(fields.max_payout) || 0,
+        isSettled: fields.is_settled as boolean || false,
+        settledAmount: Number(fields.settled_amount) || 0,
         parametersLocked: fields.parameters_locked as boolean || false,
         whitelistId: (fields.whitelist_id as string) || '',
-        periods: (fields.periods as unknown[]) || [],
+        subperiods: (fields.subperiods as unknown[]) || [],
       };
     } catch (error) {
       console.error('Failed to query deal:', error);
@@ -606,15 +802,21 @@ export class SuiService {
       }
 
       // Query DealCreated events to find all deals
+      const eventType = `${config.earnout.packageId}::earnout::DealCreated`;
+
+      if (debugConfig.sui) {
+        console.log(`Querying DealCreated events with type: ${eventType}`);
+      }
+
       const events = await this.client.queryEvents({
         query: {
-          MoveEventType: `${config.earnout.packageId}::earnout::DealCreated`,
+          MoveEventType: eventType,
         },
         limit: 1000,
       });
 
       if (debugConfig.sui) {
-        console.log(`Found ${events.data.length} DealCreated events`);
+        console.log(`Found ${events.data.length} DealCreated events from package ${config.earnout.packageId}`);
       }
 
       // Extract unique deal IDs
@@ -653,7 +855,12 @@ export class SuiService {
       for (const dealId of dealIds) {
         try {
           const deal = await this.getDeal(dealId);
-          if (!deal) continue;
+          if (!deal) {
+            if (debugConfig.sui) {
+              console.log(`Deal ${dealId} was filtered out (wrong package or not found)`);
+            }
+            continue;
+          }
 
           // Determine user's role in this deal
           let userRole: 'buyer' | 'seller' | 'auditor' | null = null;
@@ -674,10 +881,8 @@ export class SuiService {
           // Determine deal status
           let status: 'draft' | 'active' | 'completed' = 'draft';
           if (deal.parametersLocked) {
-            // Check if all periods are settled
-            const periods = deal.periods as Array<{ is_settled?: boolean }>;
-            const allSettled = periods.length > 0 && periods.every(p => p.is_settled);
-            status = allSettled ? 'completed' : 'active';
+            // Check if deal is settled
+            status = deal.isSettled ? 'completed' : 'active';
           }
 
           userDeals.push({
@@ -690,7 +895,7 @@ export class SuiService {
             status,
             parametersLocked: deal.parametersLocked,
             whitelistId: deal.whitelistId,
-            periodCount: (deal.periods as unknown[]).length,
+            periodCount: (deal.subperiods as unknown[]).length,
           });
         } catch (error) {
           console.error(`Failed to fetch deal ${dealId}:`, error);

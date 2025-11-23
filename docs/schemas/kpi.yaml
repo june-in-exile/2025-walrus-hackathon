@@ -1,0 +1,154 @@
+components:
+  schemas:
+    KPIProposal:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: ["pending", "proposed", "rejected", "accepted"]
+          example: "proposed"
+        value:
+          type: integer
+          description: Proposed KPI value
+          example: 12000000
+        proposedBy:
+          type: string
+          description: Sui address of the proposer
+          pattern: '^0x[a-fA-F0-9]{64}$'
+          example: "0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+        proposedAt:
+          type: string
+          format: date-time
+          example: "2026-01-10T10:00:00Z"
+
+    KPIAttestation:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: ["pending", "attested", "rejected"]
+          example: "attested"
+        value:
+          type: integer
+          description: Attested KPI value
+          example: 12000000
+        attestedBy:
+          type: string
+          description: Sui address of the attester (auditor)
+          pattern: '^0x[a-fA-F0-9]{64}$'
+          example: "0x9876543210abcdef1234567890abcdef1234567890abcdef1234567890abcd"
+        attestedAt:
+          type: string
+          format: date-time
+          example: "2026-01-15T11:00:00Z"
+
+    ProposeKPIRequest:
+      type: object
+      required:
+        - kpiType
+        - value
+      properties:
+        kpiType:
+          type: string
+          description: Type of KPI being proposed
+          example: "revenue"
+        value:
+          type: integer
+          description: Proposed KPI value
+          example: 11300000
+        unit:
+          type: string
+          description: Unit of measurement
+          example: "USD"
+        notes:
+          type: string
+          description: Additional notes about the proposal
+        supportingBlobIds:
+          type: array
+          items:
+            type: string
+          description: Blob IDs of supporting documents
+
+    ProposeKPIResponse:
+      type: object
+      properties:
+        proposal:
+          type: object
+          properties:
+            kpiType:
+              type: string
+            value:
+              type: integer
+            unit:
+              type: string
+            proposedBy:
+              type: string
+            proposedAt:
+              type: string
+              format: date-time
+            status:
+              type: string
+            calculatedPayout:
+              type: integer
+            notes:
+              type: string
+            supportingBlobIds:
+              type: array
+              items:
+                type: string
+        calculatedPayout:
+          type: object
+          properties:
+            amount:
+              type: integer
+            currency:
+              type: string
+        transaction:
+          type: object
+          properties:
+            txBytes:
+              type: string
+            description:
+              type: string
+            estimatedGas:
+              type: integer
+
+    AttestKPIRequest:
+      type: object
+      required:
+        - approved
+      properties:
+        approved:
+          type: boolean
+          description: Whether the KPI is approved
+        notes:
+          type: string
+          description: Auditor's notes
+        signature:
+          type: string
+          description: Auditor's signature
+
+    AttestKPIResponse:
+      type: object
+      properties:
+        attestation:
+          type: object
+          properties:
+            status:
+              type: string
+            value:
+              type: integer
+            attestedBy:
+              type: string
+            attestedAt:
+              type: string
+              format: date-time
+        transaction:
+          type: object
+          properties:
+            txBytes:
+              type: string
+            description:
+              type: string
+            estimatedGas:
+              type: integer

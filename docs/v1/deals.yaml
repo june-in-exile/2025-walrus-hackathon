@@ -303,3 +303,5 @@ paths:
             application/json:
               schema:
                 $ref: '../schemas/errors.yaml#/components/schemas/NotFoundError'
+
+

@@ -2,7 +2,7 @@
 /* eslint-disable */
 /**
  * M&A Earn-out API
- * # M&A Earn-out Management API  This API powers a decentralized M&A earn-out tracking and settlement system built on **Sui blockchain**, **Walrus decentralized storage**, and **Seal encryption**.  ## System Overview  The system enables buyers (acquirers), sellers, and auditors to: - Create and manage earn-out agreements on-chain - Store encrypted financial documents on Walrus - Track KPIs and verify calculations transparently - Execute settlements automatically based on audited KPIs  ## Technology Stack  - **Blockchain**: Sui Network (smart contracts in Move) - **Storage**: Walrus (decentralized file storage) - **Encryption**: Seal (role-based access control) - **Frontend**: Next.js with @mysten/dapp-kit  ## Key Concepts  ### Deal An on-chain earn-out agreement with defined periods, KPI types, and payout formulas. Each deal has three roles: - **Buyer**: Creates deal, uploads data, proposes KPIs, executes settlements - **Seller**: Monitors progress, receives payouts - **Auditor**: Verifies data, attests KPIs  ### Period A time range (e.g., fiscal year) with specific KPI targets and earn-out formulas. Each period progresses through stages: 1. Data Collection (buyer uploads financial documents) 2. KPI Proposal (buyer proposes calculated KPI) 3. KPI Attestation (auditor verifies and approves) 4. Settlement (buyer executes payout to seller)  ### Walrus Blobs Encrypted financial documents stored on Walrus network. Access controlled by Seal policy on Sui blockchain.  ### KPI (Key Performance Indicator) Metrics like revenue, EBITDA, or custom metrics that determine earn-out amounts according to on-chain formulas.  ## Authentication  This API uses **Sui wallet signature-based authentication**. Every request must include: - `X-Sui-Address`: User\'s Sui wallet address - `X-Sui-Signature`: Signature proving ownership of the address  Role-based access control is enforced on-chain via Sui smart contracts.  ## Workflow  1. **Setup**: Buyer creates deal and sets earn-out parameters 2. **Data Upload**: Buyer uploads encrypted financial docs to Walrus (via upload relay) 3. **KPI Proposal**: After period ends, buyer proposes KPI value 4. **Verification**: Auditor decrypts docs, verifies calculations, attests KPI 5. **Settlement**: Buyer executes settlement, funds transferred to seller  ## API Organization  - **Deal Management**: Create and manage earn-out deals - **Parameters**: Configure earn-out formulas and periods - **Walrus**: Upload relay for encrypted file storage - **Timeline**: View data submission history - **KPI Management**: Propose and attest KPIs - **Settlement**: Execute earn-out payments - **Dashboard**: Aggregated view of deal status 
+ * # M&A Earn-out Management API  This API powers a decentralized M&A earn-out tracking and settlement system built on **Sui blockchain**, **Walrus decentralized storage**, and **Seal encryption**.  ## System Overview  The system enables buyers (acquirers), sellers, and auditors to: - Create and manage earn-out agreements on-chain - Store encrypted financial documents on Walrus - Track KPIs and verify calculations transparently - Execute settlements automatically based on audited KPIs  ## Technology Stack  - **Blockchain**: Sui Network (smart contracts in Move) - **Storage**: Walrus (decentralized file storage) - **Encryption**: Seal (role-based access control) - **Frontend**: Next.js with @mysten/dapp-kit  ## Key Concepts  ### Deal An on-chain earn-out agreement with defined periods, KPI types, and payout formulas. Each deal has three roles: - **Buyer**: Creates deal, uploads data, proposes KPIs, executes settlements - **Seller**: Monitors progress, receives payouts - **Auditor**: Verifies data, attests KPIs  ### Period A time range (e.g., fiscal year) with specific KPI targets and earn-out formulas. Each period progresses through stages: 1. Data Collection (buyer uploads financial documents) 2. KPI Proposal (buyer proposes calculated KPI) 3. KPI Attestation (auditor verifies and approves) 4. Settlement (buyer executes payout to seller)  ### Walrus Blobs Encrypted financial documents stored on Walrus network. Access controlled by Seal policy on Sui blockchain.  ### KPI (Key Performance Indicator) Metrics like revenue, EBITDA, or custom metrics that determine earn-out amounts according to on-chain formulas.  ## Authentication  This API uses **Sui wallet signature-based authentication**. Every request must include: - `X-Sui-Address`: User\'s Sui wallet address - `X-Sui-Signature`: Base64-encoded signature of the timestamp message - `X-Sui-Signature-Message`: ISO timestamp that was signed (e.g., \"2025-11-20T10:30:45.123Z\")  Signatures expire after **5 minutes** to prevent replay attacks. Role-based access control is enforced on-chain via Sui smart contracts.  ## Workflow  1. **Setup**: Buyer creates deal and sets earn-out parameters 2. **Data Upload**: Buyer uploads encrypted financial docs to Walrus (via upload relay) 3. **KPI Proposal**: After period ends, buyer proposes KPI value 4. **Verification**: Auditor decrypts docs, verifies calculations, attests KPI 5. **Settlement**: Buyer executes settlement, funds transferred to seller  ## API Organization  - **Deal Management**: Create and manage earn-out deals - **Parameters**: Configure earn-out formulas and periods - **Walrus**: Upload relay for encrypted file storage - **Timeline**: View data submission history - **KPI Management**: Propose and attest KPIs - **Settlement**: Execute earn-out payments - **Dashboard**: Aggregated view of deal status 
  *
  * The version of the OpenAPI document: 1.0.0
  * 
@@ -13,18 +13,18 @@
  */
 
 import { exists, mapValues } from '../runtime';
-import type { KPIProposal } from './KPIProposal';
-import {
-    KPIProposalFromJSON,
-    KPIProposalFromJSONTyped,
-    KPIProposalToJSON,
-} from './KPIProposal';
 import type { ProposeKPIResponseCalculatedPayout } from './ProposeKPIResponseCalculatedPayout';
 import {
     ProposeKPIResponseCalculatedPayoutFromJSON,
     ProposeKPIResponseCalculatedPayoutFromJSONTyped,
     ProposeKPIResponseCalculatedPayoutToJSON,
 } from './ProposeKPIResponseCalculatedPayout';
+import type { ProposeKPIResponseProposal } from './ProposeKPIResponseProposal';
+import {
+    ProposeKPIResponseProposalFromJSON,
+    ProposeKPIResponseProposalFromJSONTyped,
+    ProposeKPIResponseProposalToJSON,
+} from './ProposeKPIResponseProposal';
 import type { ProposeKPIResponseTransaction } from './ProposeKPIResponseTransaction';
 import {
     ProposeKPIResponseTransactionFromJSON,
@@ -40,22 +40,22 @@ import {
 export interface ProposeKPIResponse {
     /**
      * 
-     * @type {KPIProposal}
+     * @type {ProposeKPIResponseProposal}
      * @memberof ProposeKPIResponse
      */
-    proposal: KPIProposal;
+    proposal?: ProposeKPIResponseProposal;
     /**
      * 
      * @type {ProposeKPIResponseCalculatedPayout}
      * @memberof ProposeKPIResponse
      */
-    calculatedPayout: ProposeKPIResponseCalculatedPayout;
+    calculatedPayout?: ProposeKPIResponseCalculatedPayout;
     /**
      * 
      * @type {ProposeKPIResponseTransaction}
      * @memberof ProposeKPIResponse
      */
-    transaction: ProposeKPIResponseTransaction;
+    transaction?: ProposeKPIResponseTransaction;
 }
 
 /**
@@ -63,9 +63,6 @@ export interface ProposeKPIResponse {
  */
 export function instanceOfProposeKPIResponse(value: object): boolean {
     let isInstance = true;
-    isInstance = isInstance && "proposal" in value;
-    isInstance = isInstance && "calculatedPayout" in value;
-    isInstance = isInstance && "transaction" in value;
 
     return isInstance;
 }
@@ -80,9 +77,9 @@ export function ProposeKPIResponseFromJSONTyped(json: any, ignoreDiscriminator: 
     }
     return {
         
-        'proposal': KPIProposalFromJSON(json['proposal']),
-        'calculatedPayout': ProposeKPIResponseCalculatedPayoutFromJSON(json['calculatedPayout']),
-        'transaction': ProposeKPIResponseTransactionFromJSON(json['transaction']),
+        'proposal': !exists(json, 'proposal') ? undefined : ProposeKPIResponseProposalFromJSON(json['proposal']),
+        'calculatedPayout': !exists(json, 'calculatedPayout') ? undefined : ProposeKPIResponseCalculatedPayoutFromJSON(json['calculatedPayout']),
+        'transaction': !exists(json, 'transaction') ? undefined : ProposeKPIResponseTransactionFromJSON(json['transaction']),
     };
 }
 
@@ -95,7 +92,7 @@ export function ProposeKPIResponseToJSON(value?: ProposeKPIResponse | null): any
     }
     return {
         
-        'proposal': KPIProposalToJSON(value.proposal),
+        'proposal': ProposeKPIResponseProposalToJSON(value.proposal),
         'calculatedPayout': ProposeKPIResponseCalculatedPayoutToJSON(value.calculatedPayout),
         'transaction': ProposeKPIResponseTransactionToJSON(value.transaction),
     };

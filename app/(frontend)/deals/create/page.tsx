@@ -2,10 +2,10 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm, useFieldArray } from 'react-hook-form';
+import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { useCurrentAccount } from '@mysten/dapp-kit';
+import { useCurrentAccount, useSignPersonalMessage } from '@mysten/dapp-kit';
 import { useRole } from '@/src/frontend/contexts/RoleContext';
 import { useCreateDeal } from '@/src/frontend/hooks/useCreateDeal';
 import { RoleAccessMessage } from '@/src/frontend/components/common/RoleAccessMessage';
@@ -17,13 +17,14 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { ArrowLeft, Building2, Users, DollarSign, FileText, Upload, X, Package, Plus, Trash2, Wallet, Loader2 } from 'lucide-react';
 import Link from 'next/link';
-import type { AssetReference } from '@/src/shared/types/asset';
+import { generateSubPeriods, SubPeriod } from '@/src/shared/utils/period-calculator';
 
 const createDealSchema = z.object({
   // Basic Information
   dealName: z.string().min(1, 'Deal name is required'),
   buyerName: z.string().min(1, 'Buyer name is required'),
   sellerName: z.string().min(1, 'Seller name is required'),
+  startDate: z.string().min(1, 'Start date is required'),
 
   // Blockchain Addresses
   acquirerAddress: z.string().regex(/^0x[a-fA-F0-9]{64}$/, 'Invalid Sui address format'),
@@ -39,7 +40,6 @@ const createDealSchema = z.object({
   // Assets Management
   assets: z.array(z.object({
     assetID: z.string().min(1, 'Asset ID is required'),
-    originalCost: z.number().positive('Original cost must be positive'),
     estimatedUsefulLife_months: z.number().int().min(1, 'Useful life must be at least 1 month'),
   })).min(1, 'At least one asset is required'),
 });
@@ -50,20 +50,29 @@ export default function CreateDealPage() {
   const router = useRouter();
   const { currentRole } = useRole();
   const currentAccount = useCurrentAccount();
+  const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
   const { createDeal, isCreating } = useCreateDeal();
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
 
   const {
     register,
-    handleSubmit,
     control,
     formState: { errors },
+    getValues,
   } = useForm<CreateDealFormData>({
     resolver: zodResolver(createDealSchema),
     defaultValues: {
       earnoutPeriodYears: 3,
+      kpiTargetAmount: 700000,
+      contingentConsiderationAmount: 30000000,
       headquarterExpenseAllocationPercentage: 0.1,
-      assets: [{ assetID: '', originalCost: 0, estimatedUsefulLife_months: 120 }],
+      startDate: '2025-11-03',
+
+      assets: [
+        { assetID: 'MACH-001A', estimatedUsefulLife_months: 120 },
+        { assetID: 'MACH-001B', estimatedUsefulLife_months: 96 },
+        { assetID: 'OFFICE-015', estimatedUsefulLife_months: 60 },
+      ],
     },
   });
 
@@ -106,13 +115,40 @@ export default function CreateDealPage() {
       toast.success('MA Agreement uploaded successfully');
     }
   };
-
   const removeFile = () => {
     setUploadedFile(null);
     toast.info('MA Agreement removed');
   };
 
+  const handleCreateDealClick = async () => {
+    const currentData = getValues();
+    const validationResult = createDealSchema.safeParse(currentData);
+
+    if (!validationResult.success) {
+      const zodErrors = validationResult.error.flatten().fieldErrors;
+      console.error("Form validation failed. Details:", zodErrors);
+
+      const errorFields = Object.keys(zodErrors);
+      let description = "Please check the form for errors.";
+      if (errorFields.length > 0) {
+        const fieldsToShow = errorFields.slice(0, 3).join(', ');
+        description = `Invalid fields include: ${fieldsToShow}...`;
+      }
+
+      toast.error("Form is invalid", {
+        description: description + " See console (F12) for more details.",
+      });
+      return;
+    }
+
+    // If validation passes, call the original onSubmit function with the validated data
+    console.log("Form is valid, submitting...");
+    await onSubmit(validationResult.data);
+  };
   const onSubmit = async (data: CreateDealFormData) => {
+    console.log('onSubmit function triggered.');
+    console.log('Form data:', data);
+    console.log('Form errors:', errors);
     if (!uploadedFile) {
       toast.error('Please upload the M&A Agreement PDF');
       return;
@@ -123,34 +159,109 @@ export default function CreateDealPage() {
       return;
     }
 
-    // Transform assets data to AssetReference format
-    const assetsReferences: AssetReference[] = data.assets.map(asset => ({
-      assetID: asset.assetID,
-      originalCost: asset.originalCost,
-      estimatedUsefulLife_months: asset.estimatedUsefulLife_months,
-    }));
+    try {
+      // Step 1: Sign authentication message for upload
+      toast.loading('Please sign authentication message...', { id: 'sign-auth' });
 
-    console.log('Creating deal with data:', data);
-    console.log('MA Agreement file:', uploadedFile);
-    console.log('Assets metadata:', { assets: assetsReferences });
+      const timestamp = new Date().toISOString();
+      const messageBytes = new TextEncoder().encode(timestamp);
 
-    // Create the deal on-chain
-    await createDeal({
-      name: data.dealName,
-      sellerAddress: data.acquireeAddress,
-      auditorAddress: data.auditorAddress,
-      onSuccess: (txDigest) => {
-        console.log('Deal created with transaction:', txDigest);
-        console.log('MA Agreement file to upload:', uploadedFile);
-        console.log('Assets to process:', assetsReferences);
-        // TODO: After deal is created, upload the M&A Agreement to Walrus
-        // TODO: Process assets data and store in smart contract
-        router.push('/deals');
-      },
-      onError: (error) => {
-        console.error('Failed to create deal:', error);
-      },
-    });
+      const signResult = await signPersonalMessage({
+        message: messageBytes,
+      });
+
+      toast.dismiss('sign-auth');
+
+      // Step 2: Upload M&A Agreement PDF to Walrus with Seal encryption
+      toast.loading('Uploading M&A Agreement...', { id: 'upload-agreement' });
+
+      const formData = new FormData();
+      formData.append('file', uploadedFile);
+      formData.append('dealId', 'pending'); // Placeholder since we don't have dealId yet
+      formData.append('periodId', 'pending'); // Placeholder period
+      formData.append('dataType', 'ma_agreement');
+
+      const uploadResponse = await fetch('/api/v1/walrus/upload?mode=server_encrypted', {
+        method: 'POST',
+        headers: {
+          'X-Sui-Address': currentAccount.address,
+          'X-Sui-Signature': signResult.signature,
+          'X-Sui-Signature-Message': timestamp,
+        },
+        body: formData,
+      });
+
+      if (!uploadResponse.ok) {
+        const errorData = await uploadResponse.json();
+        throw new Error(errorData.message || 'Failed to upload agreement');
+      }
+
+      const uploadData = await uploadResponse.json();
+      const agreementBlobId = uploadData.blobId;
+
+      toast.dismiss('upload-agreement');
+      toast.success('M&A Agreement uploaded successfully');
+
+      console.log('Agreement uploaded with blob ID:', agreementBlobId);
+
+      // Step 2: Prepare data for deal creation
+      // Calculate periodMonths
+      const startDate = new Date(data.startDate);
+      const endDate = new Date(startDate.getFullYear() + data.earnoutPeriodYears, startDate.getMonth(), startDate.getDate());
+      const periodMonths = (endDate.getFullYear() - startDate.getFullYear()) * 12 + (endDate.getMonth() - startDate.getMonth());
+
+      // Generate subperiods
+      const subperiods: SubPeriod[] = generateSubPeriods(startDate.getTime(), periodMonths);
+      const subperiodIds = subperiods.map(sp => sp.periodId);
+      const subperiodStartDates = subperiods.map(sp => new Date(sp.startDate).getTime());
+      const subperiodEndDates = subperiods.map(sp => new Date(sp.endDate).getTime());
+
+      // Prepare assets data
+      const assetIds = data.assets.map(asset => asset.assetID);
+      const assetUsefulLives = data.assets.map(asset => asset.estimatedUsefulLife_months);
+
+      // Convert headquarter percentage from decimal to whole number (0-100)
+      const headquarter = Math.round(data.headquarterExpenseAllocationPercentage * 100);
+
+      console.log('Creating deal with:');
+      console.log('- Agreement Blob ID:', agreementBlobId);
+      console.log('- Headquarter:', headquarter);
+      console.log('- Asset IDs:', assetIds);
+      console.log('- Asset Useful Lives:', assetUsefulLives);
+      console.log('- Period Months:', periodMonths);
+      console.log('- Subperiods:', subperiods);
+
+      // Step 3: Create the deal on-chain
+      await createDeal({
+        agreementBlobId,
+        name: data.dealName,
+        sellerAddress: data.acquireeAddress,
+        auditorAddress: data.auditorAddress,
+        startDateMs: startDate.getTime(),
+        periodMonths: periodMonths,
+        kpiThreshold: data.kpiTargetAmount,
+        maxPayout: data.contingentConsiderationAmount,
+        headquarter,
+        assetIds,
+        assetUsefulLives,
+        subperiodIds: subperiodIds,
+        subperiodStartDates: subperiodStartDates,
+        subperiodEndDates: subperiodEndDates,
+        onSuccess: (txDigest) => {
+          console.log('Deal created successfully with transaction:', txDigest);
+          router.push('/deals');
+        },
+        onError: (error) => {
+          console.error('Failed to create deal:', error);
+        },
+      });
+    } catch (error) {
+      toast.dismiss('upload-agreement');
+      console.error('Error during deal creation:', error);
+      toast.error('Failed to create deal', {
+        description: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
   };
 
   return (
@@ -169,7 +280,7 @@ export default function CreateDealPage() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      <form className="space-y-6">
         {/* Basic Information */}
         <Card>
           <CardHeader>
@@ -288,6 +399,20 @@ export default function CreateDealPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
+              <Label htmlFor="startDate">Start Date</Label>
+              <Input
+                id="startDate"
+                type="date"
+                {...register('startDate')}
+              />
+              {errors.startDate && (
+                <p className="text-sm text-destructive mt-1">{errors.startDate.message}</p>
+              )}
+              <p className="text-xs text-muted-foreground mt-1">
+                The date when the earn-out period begins
+              </p>
+            </div>
+            <div>
               <Label htmlFor="earnoutPeriodYears">Earn-out Period (Years)</Label>
               <Input
                 id="earnoutPeriodYears"
@@ -302,19 +427,19 @@ export default function CreateDealPage() {
             </div>
 
             <div>
-              <Label htmlFor="kpiTargetAmount">KPI Target Amount (Net Profit)</Label>
+              <Label htmlFor="kpiTargetAmount">KPI Target Amount</Label>
               <Input
                 id="kpiTargetAmount"
                 type="number"
-                step="0.01"
-                placeholder="e.g., 900000"
+                step="1"
+                placeholder="e.g., 700000"
                 {...register('kpiTargetAmount', { valueAsNumber: true })}
               />
               {errors.kpiTargetAmount && (
                 <p className="text-sm text-destructive mt-1">{errors.kpiTargetAmount.message}</p>
               )}
               <p className="text-xs text-muted-foreground mt-1">
-                Cumulative net profit target to trigger earn-out payment
+                The target amount for the Key Performance Indicator.
               </p>
             </div>
 
@@ -323,35 +448,50 @@ export default function CreateDealPage() {
               <Input
                 id="contingentConsiderationAmount"
                 type="number"
-                step="0.01"
+                step="1"
                 placeholder="e.g., 30000000"
                 {...register('contingentConsiderationAmount', { valueAsNumber: true })}
               />
               {errors.contingentConsiderationAmount && (
-                <p className="text-sm text-destructive mt-1">
-                  {errors.contingentConsiderationAmount.message}
-                </p>
+                <p className="text-sm text-destructive mt-1">{errors.contingentConsiderationAmount.message}</p>
               )}
               <p className="text-xs text-muted-foreground mt-1">
-                Amount to be paid if KPI target is met
+                The amount of consideration payable contingent on meeting the KPI.
               </p>
             </div>
+
 
             <div>
               <Label htmlFor="headquarterExpenseAllocationPercentage">
                 Headquarter Expense Allocation (%)
               </Label>
-              <Input
-                id="headquarterExpenseAllocationPercentage"
-                type="number"
-                step="0.01"
-                min="0"
-                max="100"
-                placeholder="e.g., 10"
-                {...register('headquarterExpenseAllocationPercentage', {
-                  valueAsNumber: true,
-                  setValueAs: (v) => v / 100, // Convert percentage to decimal
-                })}
+              <Controller
+                name="headquarterExpenseAllocationPercentage"
+                control={control}
+                render={({ field }) => (
+                  <Input
+                    id="headquarterExpenseAllocationPercentage"
+                    type="number"
+                    step="1"
+                    min="0"
+                    max="100"
+                    placeholder="e.g., 10"
+                    value={field.value === undefined ? '' : field.value * 100}
+                    onBlur={field.onBlur}
+                    ref={field.ref}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value === '') {
+                        field.onChange(undefined);
+                      } else {
+                        const num = parseFloat(value);
+                        if (!isNaN(num) && num >= 0 && num <= 100) {
+                          field.onChange(num / 100);
+                        }
+                      }
+                    }}
+                  />
+                )}
               />
               {errors.headquarterExpenseAllocationPercentage && (
                 <p className="text-sm text-destructive mt-1">
@@ -409,47 +549,24 @@ export default function CreateDealPage() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor={`assets.${index}.originalCost`}>
-                        Original Cost (USD)
-                      </Label>
-                      <Input
-                        id={`assets.${index}.originalCost`}
-                        type="number"
-                        step="1"
-                        min="0"
-                        placeholder="e.g., 500000"
-                        {...register(`assets.${index}.originalCost` as const, {
-                          valueAsNumber: true,
-                        })}
-                      />
-                      {errors.assets?.[index]?.originalCost && (
-                        <p className="text-sm text-destructive mt-1">
-                          {errors.assets[index]?.originalCost?.message}
-                        </p>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label htmlFor={`assets.${index}.estimatedUsefulLife_months`}>
-                        Estimated Useful Life (Months)
-                      </Label>
-                      <Input
-                        id={`assets.${index}.estimatedUsefulLife_months`}
-                        type="number"
-                        min="1"
-                        placeholder="e.g., 120"
-                        {...register(`assets.${index}.estimatedUsefulLife_months` as const, {
-                          valueAsNumber: true,
-                        })}
-                      />
-                      {errors.assets?.[index]?.estimatedUsefulLife_months && (
-                        <p className="text-sm text-destructive mt-1">
-                          {errors.assets[index]?.estimatedUsefulLife_months?.message}
-                        </p>
-                      )}
-                    </div>
+                  <div>
+                    <Label htmlFor={`assets.${index}.estimatedUsefulLife_months`}>
+                      Estimated Useful Life (Months)
+                    </Label>
+                    <Input
+                      id={`assets.${index}.estimatedUsefulLife_months`}
+                      type="number"
+                      min="1"
+                      placeholder="e.g., 120"
+                      {...register(`assets.${index}.estimatedUsefulLife_months` as const, {
+                        valueAsNumber: true,
+                      })}
+                    />
+                    {errors.assets?.[index]?.estimatedUsefulLife_months && (
+                      <p className="text-sm text-destructive mt-1">
+                        {errors.assets[index]?.estimatedUsefulLife_months?.message}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -459,7 +576,7 @@ export default function CreateDealPage() {
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => append({ assetID: '', originalCost: 0, estimatedUsefulLife_months: 120 })}
+              onClick={() => append({ assetID: '', estimatedUsefulLife_months: 120 })}
               className="w-full"
             >
               <Plus className="mr-2 h-4 w-4" />
@@ -549,7 +666,7 @@ export default function CreateDealPage() {
                   >
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={isCreating || !uploadedFile}>
+                  <Button type="button" disabled={isCreating} onClick={handleCreateDealClick}>
                     {isCreating ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />

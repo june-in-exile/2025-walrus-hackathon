@@ -11,6 +11,7 @@ interface FileUploadZoneProps {
   accept?: string;
   maxSize?: number; // in MB
   enableEncryption?: boolean;
+  dealId: string; // dealId is required for encryption
 }
 
 export function FileUploadZone({
@@ -20,6 +21,7 @@ export function FileUploadZone({
   accept = '.pdf,.xlsx,.xls,.csv,.doc,.docx,.json',
   maxSize = 50,
   enableEncryption = false,
+  dealId,
 }: FileUploadZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -57,20 +59,20 @@ export function FileUploadZone({
 
       if (enableEncryption) {
         // Get Seal configuration from environment
-        const packageId = process.env.NEXT_PUBLIC_SEAL_PACKAGE_ID;
-        const whitelistObjectId = process.env.NEXT_PUBLIC_SEAL_POLICY_OBJECT_ID;
+        const packageId = process.env.NEXT_PUBLIC_EARNOUT_PACKAGE_ID;
 
-        if (!packageId || !whitelistObjectId) {
-          throw new Error('Seal encryption is not configured. Please set NEXT_PUBLIC_SEAL_PACKAGE_ID and NEXT_PUBLIC_SEAL_POLICY_OBJECT_ID.');
+        if (!packageId) {
+          throw new Error('Seal encryption is not configured. Please set NEXT_PUBLIC_EARNOUT_PACKAGE_ID.');
         }
 
         // Encrypt data using Seal
         const encryptedBuffer = await encryptData(
           suiClient,
           fileBuffer,
-          whitelistObjectId,
+          dealId, // Use dealId as the whitelistObjectId
           packageId
         );
+
 
         // Convert Uint8Array to Blob using Array.from() to avoid TypeScript issues
         blobToUpload = new Blob([new Uint8Array(encryptedBuffer)], { type: 'application/octet-stream' });

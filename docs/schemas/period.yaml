@@ -79,7 +79,7 @@ components:
         threshold:
           type: number
           description: Minimum threshold to achieve earn-out
-          example: 10000000
+          example: 900000
         unit:
           type: string
           description: Unit of measurement
@@ -114,7 +114,7 @@ components:
           description: Formula-specific parameters
           additionalProperties: true
           example:
-            minKPI: 10000000
+            minKPI: 900000
             maxKPI: 15000000
             minPayout: 0
             maxPayout: 5000000

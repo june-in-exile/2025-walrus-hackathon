@@ -4,10 +4,16 @@
  * GET /api/v1/walrus/download/{blobId}?dealId=...
  *
  * Downloads encrypted file from Walrus. Frontend is responsible for decryption using Seal SDK.
+ *
+ * Authentication: Level 1 (Read) - Only requires wallet address
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { walrusController } from '@/src/backend/controllers/controller';
+import {
+  authenticateReadOperation,
+  createAuthErrorResponse,
+} from '@/src/backend/middleware/auth';
 
 /**
  * GET /api/v1/walrus/download/{blobId}
@@ -19,6 +25,17 @@ export async function GET(
   { params }: { params: Promise<{ blobId: string }> }
 ) {
   try {
+    // Authenticate: Level 1 (Read operation)
+    const authResult = authenticateReadOperation(request);
+    if (!authResult.authenticated) {
+      return NextResponse.json(
+        createAuthErrorResponse(authResult),
+        { status: authResult.errorCode || 401 }
+      );
+    }
+
+    const userAddress = authResult.address!;
+
     // Await params (Next.js 15 requirement)
     const { blobId } = await params;
 
@@ -53,8 +70,8 @@ export async function GET(
       );
     }
 
-    // Delegate to controller
-    return await walrusController.handleDownload(request, blobId, dealId);
+    // Delegate to controller with authenticated address
+    return await walrusController.handleDownload(blobId, dealId, userAddress);
   } catch (error) {
     console.error('Download route error:', error);
 

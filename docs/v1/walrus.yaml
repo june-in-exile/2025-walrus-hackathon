@@ -49,16 +49,36 @@ paths:
         - Decryption keys: Managed by Seal Key Servers with blockchain verification
 
         **Next Steps After Upload**:
-        - Frontend must call a Sui transaction to register this blobId on-chain
+        - For real deal uploads: Frontend must call a Sui transaction to register this blobId on-chain
         - Transaction binds blob to specific deal/period
         - This creates immutable audit trail of data submissions
 
-        **Access Control**:
-        - Role: Authenticated users (primarily buyer uploading data)
-        - Verification: User must be a participant in the specified deal
+        **Authentication**: Tiered (based on upload type)
+        - Requires: `X-Sui-Address` header only
+
+        **Pending Deal Uploads** (dealId: 'pending'):
+        - Level 1 (Read) authentication
+        - Used for M&A agreement uploads before deal creation
+        - No transaction returned - simple upload confirmation
+        - Frictionless UX for initial document sharing
+
+        **Real Deal Uploads** (dealId: actual deal object ID):
+        - Level 2 (Write) authentication
+        - Used for financial documents tied to specific periods
+        - Returns unsigned transaction for on-chain blob registration
+        - User signs transaction in wallet
+        - Move contract enforces access control on-chain
+
+        **Security Flow**:
+        1. API detects upload type based on dealId parameter
+        2. Validates address and uploads encrypted file to Walrus
+        3. Returns blobId (always) and unsigned transaction (real deals only)
+        4. For real deals: User signs transaction, blockchain verifies permissions
       operationId: uploadToWalrus
       tags:
         - Walrus
+      security:
+        - Level2Auth: []
       parameters:
         - name: mode
           in: query
@@ -78,21 +98,6 @@ paths:
             type: string
             pattern: "^0x[a-fA-F0-9]{64}$"
           description: Sui wallet address of uploader
-        - name: X-Sui-Signature
-          in: header
-          required: true
-          schema:
-            type: string
-          description: Base64-encoded signature of the timestamp message
-        - name: X-Sui-Signature-Message
-          in: header
-          required: true
-          schema:
-            type: string
-            format: date-time
-          description: |
-            ISO timestamp that was signed (e.g., "2025-11-20T10:30:45.123Z").
-            Must be within 5 minutes of current time to prevent replay attacks.
       requestBody:
         required: true
         content:
@@ -114,8 +119,10 @@ paths:
                     - `server_encrypted` mode: Plaintext file (backend will encrypt)
                 dealId:
                   type: string
-                  pattern: "^0x[a-fA-F0-9]{64}$"
-                  description: Deal ID this file belongs to
+                  description: |
+                    Deal ID this file belongs to:
+                    - Use `"pending"` for M&A agreement uploads before deal creation (Level 1 auth, no transaction)
+                    - Use actual deal object ID (0x...) for financial documents (Level 2 auth, returns transaction)
                   example: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
                 periodId:
                   type: string
@@ -158,34 +165,66 @@ paths:
               description: "Q1 2026 revenue journal"
       responses:
         "200":
-          description: File successfully uploaded to Walrus
+          description: |
+            File successfully uploaded to Walrus.
+
+            **Pending Deal Upload** (dealId: 'pending'):
+            - Returns blobId and metadata only
+            - No `nextStep` or `transaction` fields (simple confirmation)
+
+            **Real Deal Upload** (dealId: actual object ID):
+            - Returns blobId, metadata, AND unsigned transaction
+            - `nextStep.transaction` contains txBytes for on-chain registration
+            - Frontend must execute this transaction to complete the upload process
           content:
             application/json:
               schema:
                 $ref: "../schemas/walrus.yaml#/components/schemas/WalrusUploadResponse"
-              example:
-                blobId: "blob_2Nf8pQz3Xm7Yk5Rd9Wv1Bc6Lt4Hs"
-                commitment: "sha256:a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef12345678"
-                size: 2048576
-                uploadedAt: "2026-03-15T09:30:00Z"
-                blobReference:
-                  blobId: "blob_2Nf8pQz3Xm7Yk5Rd9Wv1Bc6Lt4Hs"
-                  dataType: "revenue_journal"
-                  uploadedAt: "2026-03-15T09:30:00Z"
-                  uploaderAddress: "0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
-                  size: 2048576
-                  metadata:
-                    filename: "revenue_q1_2026.csv"
-                    mimeType: "text/csv"
-                    description: "Q1 2026 revenue journal"
-                    periodId: "period_2026"
-                    encrypted: true
-                nextStep:
-                  action: "register_on_chain"
-                  description: "Sign transaction to register this blob on-chain"
-                  transaction:
-                    txBytes: "AAACAAgA..."
-                    description: "Register Walrus blob: revenue_journal for period_2026"
+              examples:
+                realDealUpload:
+                  summary: Real deal upload (with transaction)
+                  value:
+                    blobId: "blob_2Nf8pQz3Xm7Yk5Rd9Wv1Bc6Lt4Hs"
+                    commitment: "sha256:a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef12345678"
+                    size: 2048576
+                    uploadedAt: "2026-03-15T09:30:00Z"
+                    blobReference:
+                      blobId: "blob_2Nf8pQz3Xm7Yk5Rd9Wv1Bc6Lt4Hs"
+                      dataType: "revenue_journal"
+                      uploadedAt: "2026-03-15T09:30:00Z"
+                      uploaderAddress: "0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+                      size: 2048576
+                      metadata:
+                        filename: "revenue_q1_2026.csv"
+                        mimeType: "text/csv"
+                        description: "Q1 2026 revenue journal"
+                        periodId: "period_2026"
+                        encrypted: true
+                    nextStep:
+                      action: "register_on_chain"
+                      description: "Sign transaction to register this blob on-chain"
+                      transaction:
+                        txBytes: "AAACAAgA..."
+                        description: "Register Walrus blob: revenue_journal for period_2026"
+                pendingDealUpload:
+                  summary: Pending deal upload (M&A agreement, no transaction)
+                  value:
+                    blobId: "blob_8Kf2pQz9Xm3Yk7Rd1Wv5Bc2Lt6Hs"
+                    commitment: "sha256:f5e4d3c2b1a098765432109876543210fedcba9876543210fedcba98765432"
+                    size: 201765
+                    uploadedAt: "2025-11-23T10:15:00Z"
+                    blobReference:
+                      blobId: "blob_8Kf2pQz9Xm3Yk7Rd1Wv5Bc2Lt6Hs"
+                      dataType: "custom"
+                      uploadedAt: "2025-11-23T10:15:00Z"
+                      uploaderAddress: "0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+                      size: 201765
+                      metadata:
+                        filename: "mna_agreement.pdf"
+                        mimeType: "application/pdf"
+                        description: "M&A Agreement - TechCorp Acquisition"
+                        customDataType: "M&A Agreement"
+                        encrypted: false
         "400":
           description: Validation error
           content:
@@ -259,19 +298,23 @@ paths:
         - Frontend uses these to request decryption keys from Seal Key Servers
         - Access control is enforced by the whitelist Move contract on Sui blockchain
 
-        **Access Control**:
-        - Verification: User must be buyer/seller/auditor in the specified deal
-        - On-chain check: Backend queries Sui blockchain to verify user's role via whitelist
-        - Only authorized users can decrypt the data
+        **Authentication**: Level 1 (Read)
+        - Requires: `X-Sui-Address` header only
+        - No signature required for download
+        - Backend verifies user is buyer/seller/auditor via Sui blockchain query
+        - Returns encrypted ciphertext (frontend decrypts with Seal)
 
         **Security Features**:
         - Backend never decrypts or sees plaintext during download
         - All access attempts are logged for audit trail
         - Invalid access attempts return 403 Forbidden
         - Decryption keys are fetched on-demand from Seal Key Servers (not stored)
+        - Even if unauthorized user gets ciphertext, they cannot decrypt without proper role
       operationId: downloadFromWalrus
       tags:
         - Walrus
+      security:
+        - Level1Auth: []
       parameters:
         - name: blobId
           in: path
@@ -295,21 +338,6 @@ paths:
             type: string
             pattern: "^0x[a-fA-F0-9]{64}$"
           description: Sui wallet address requesting download
-        - name: X-Sui-Signature
-          in: header
-          required: true
-          schema:
-            type: string
-          description: Base64-encoded signature of the timestamp message
-        - name: X-Sui-Signature-Message
-          in: header
-          required: true
-          schema:
-            type: string
-            format: date-time
-          description: |
-            ISO timestamp that was signed (e.g., "2025-11-20T10:30:45.123Z").
-            Must be within 5 minutes of current time to prevent replay attacks.
       responses:
         "200":
           description: File successfully downloaded

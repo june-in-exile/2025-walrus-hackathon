@@ -14,7 +14,10 @@ import { walrusService } from '@/src/backend/services/walrus-service';
 import { suiService } from '@/src/backend/services/sui-service';
 import { config } from '@/src/shared/config/env';
 import jwt from 'jsonwebtoken';
-import { authController } from '@/src/backend/controllers/auth-controller';
+import {
+  authenticateWriteOperation,
+  createAuthErrorResponse,
+} from '@/src/backend/middleware/auth';
 
 import type {
   EncryptionMode,
@@ -119,43 +122,22 @@ export class WalrusController {
   /**
    * Handle file upload with hybrid encryption mode
    *
-   * @param request - NextRequest
-   * @param mode - Encryption mode
+   * Authentication is handled by the route layer before calling this method.
+   *
+   * @param formData - FormData containing file and metadata
+   * @param userAddress - Authenticated user's Sui wallet address
+   * @param mode - Encryption mode (client_encrypted or server_encrypted)
+   * @param isPendingDeal - Whether this is a pending deal upload (no on-chain registration)
    * @returns Upload response
    */
-  async handleUpload(request: NextRequest, mode: EncryptionMode): Promise<NextResponse> {
+  async handleUpload(
+    formData: FormData,
+    userAddress: string,
+    mode: EncryptionMode,
+    isPendingDeal: boolean
+  ): Promise<NextResponse> {
     try {
-      // Extract user information from headers
-      const userAddress = request.headers.get('X-Sui-Address');
-      const signature = request.headers.get('X-Sui-Signature');
-      const signedMessage = request.headers.get('X-Sui-Signature-Message');
-
-      if (!userAddress || !signature || !signedMessage) {
-        return NextResponse.json(
-          {
-            error: 'UnauthorizedError',
-            message: 'Missing authentication headers (X-Sui-Address, X-Sui-Signature, X-Sui-Signature-Message)',
-            statusCode: 401,
-          },
-          { status: 401 }
-        );
-      }
-
-      // Verify signature
-      const verificationResult = await authController.verifySignature(userAddress, signature, signedMessage);
-      if (!verificationResult.valid) {
-        return NextResponse.json(
-          {
-            error: 'UnauthorizedError',
-            message: verificationResult.error || 'Invalid signature',
-            statusCode: 401,
-          },
-          { status: 401 }
-        );
-      }
-
-      // Parse multipart form data
-      const formData = await request.formData();
+      // Extract form data fields
       const file = formData.get('file') as File | null;
       const dealId = formData.get('dealId') as string;
       const periodId = formData.get('periodId') as string;
@@ -206,9 +188,6 @@ export class WalrusController {
           { status: 400 }
         );
       }
-
-      // Check if this is a pre-deal upload (e.g., M&A agreement before deal creation)
-      const isPendingDeal = dealId === 'pending' || dealId === 'null';
 
       // Prepare blob metadata
       const metadata: BlobMetadata = {
@@ -360,33 +339,20 @@ export class WalrusController {
   /**
    * Handle file download - always returns ciphertext for frontend decryption
    *
-   * @param request - NextRequest
+   * Authentication is handled by the route layer before calling this method.
+   *
    * @param blobId - Blob ID to download
    * @param dealId - Deal ID for authorization
+   * @param userAddress - Authenticated user's Sui wallet address
    * @returns Downloaded encrypted file with Seal policy headers
    */
   async handleDownload(
-    request: NextRequest,
     blobId: string,
-    dealId: string | null
+    dealId: string,
+    userAddress: string
   ): Promise<NextResponse> {
     try {
-      // Extract user information from headers
-      const userAddress = request.headers.get('X-Sui-Address');
-      const signature = request.headers.get('X-Sui-Signature');
-      const signedMessage = request.headers.get('X-Sui-Signature-Message');
-
-      if (!userAddress || !signature || !signedMessage) {
-        return NextResponse.json(
-          {
-            error: 'UnauthorizedError',
-            message: 'Missing authentication headers (X-Sui-Address, X-Sui-Signature, X-Sui-Signature-Message)',
-            statusCode: 401,
-          },
-          { status: 401 }
-        );
-      }
-
+      // Validate parameters
       if (!dealId) {
         return NextResponse.json(
           {
@@ -395,19 +361,6 @@ export class WalrusController {
             statusCode: 400,
           },
           { status: 400 }
-        );
-      }
-
-      // Verify signature
-      const verificationResult = await authController.verifySignature(userAddress, signature, signedMessage);
-      if (!verificationResult.valid) {
-        return NextResponse.json(
-          {
-            error: 'UnauthorizedError',
-            message: verificationResult.error || 'Invalid signature',
-            statusCode: 401,
-          },
-          { status: 401 }
         );
       }
 
@@ -824,26 +777,16 @@ export class WalrusController {
         );
       }
 
-      // Extract authentication headers
-      const userAddress = req.headers.get('X-Sui-Address');
-      const signature = req.headers.get('X-Sui-Signature');
-      const signedMessage = req.headers.get('X-Sui-Signature-Message');
-
-      if (!userAddress || !signature || !signedMessage) {
+      // Authenticate: Level 2 (Write operation - returns unsigned transaction)
+      const authResult = authenticateWriteOperation(req);
+      if (!authResult.authenticated) {
         return NextResponse.json(
-          { error: 'Missing authentication headers' },
-          { status: 401 }
+          createAuthErrorResponse(authResult),
+          { status: authResult.errorCode || 401 }
         );
       }
 
-      // Verify authentication
-      const authResult = await authController.verifySignature(userAddress, signature, signedMessage);
-      if (!authResult.valid) {
-        return NextResponse.json(
-          { error: authResult.error || 'Authentication failed' },
-          { status: 401 }
-        );
-      }
+      const userAddress = authResult.address!;
 
       // TODO: In production, call Nautilus TEE to perform actual calculation
       // For now, return mock calculation result

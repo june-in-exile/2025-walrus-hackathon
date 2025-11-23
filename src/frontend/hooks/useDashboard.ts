@@ -1,11 +1,12 @@
 /**
  * React Query hooks for Dashboard
  * Fetches dashboard data from the real API with wallet authentication
+ *
+ * Authentication: Level 1 (Read) - Only requires wallet address, no signature needed
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { useCurrentAccount, useSignPersonalMessage } from '@mysten/dapp-kit';
-import { useCallback } from 'react';
+import { useCurrentAccount } from '@mysten/dapp-kit';
 import type { DashboardResponse } from '@/src/frontend/lib/api-client';
 
 // Query keys
@@ -14,103 +15,27 @@ export const dashboardKeys = {
   detail: (dealId: string) => [...dashboardKeys.all, dealId] as const,
 };
 
-// Cache for signature to avoid re-signing on every query
-interface SignatureCache {
-  signature: string;
-  message: string;
-  timestamp: number;
-  address: string;
-}
-
-// Signature is valid for 4 minutes (API allows 5 minutes)
-const SIGNATURE_CACHE_DURATION = 4 * 60 * 1000;
-const SIGNATURE_CACHE_KEY = 'sui-signature-cache';
-
-// Helper functions for persistent signature cache (shared with useDeals)
-function getPersistedSignatureCache(): SignatureCache | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const cached = sessionStorage.getItem(SIGNATURE_CACHE_KEY);
-    if (!cached) return null;
-    return JSON.parse(cached) as SignatureCache;
-  } catch {
-    return null;
-  }
-}
-
-function setPersistedSignatureCache(cache: SignatureCache): void {
-  if (typeof window === 'undefined') return;
-  try {
-    sessionStorage.setItem(SIGNATURE_CACHE_KEY, JSON.stringify(cache));
-  } catch {
-    // Ignore storage errors
-  }
-}
-
 /**
  * Hook to fetch dashboard data for a specific deal
  * Uses real API endpoint with wallet authentication
+ *
+ * No signature required - only the wallet address is needed.
  */
 export function useDashboard(dealId: string) {
   const currentAccount = useCurrentAccount();
-  const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
-
-  const getAuthHeaders = useCallback(async (): Promise<Record<string, string> | null> => {
-    if (!currentAccount?.address) return null;
-
-    // Check if we have a valid cached signature in sessionStorage
-    const cache = getPersistedSignatureCache();
-    const now = Date.now();
-    if (cache && cache.address === currentAccount.address && now - cache.timestamp < SIGNATURE_CACHE_DURATION) {
-      return {
-        'X-Sui-Address': currentAccount.address,
-        'X-Sui-Signature': cache.signature,
-        'X-Sui-Signature-Message': cache.message,
-      };
-    }
-
-    // Sign a new timestamp message
-    const timestamp = new Date().toISOString();
-    const messageBytes = new TextEncoder().encode(timestamp);
-
-    try {
-      const { signature } = await signPersonalMessage({
-        message: messageBytes,
-      });
-
-      // Cache the signature in sessionStorage
-      setPersistedSignatureCache({
-        signature,
-        message: timestamp,
-        timestamp: now,
-        address: currentAccount.address,
-      });
-
-      return {
-        'X-Sui-Address': currentAccount.address,
-        'X-Sui-Signature': signature,
-        'X-Sui-Signature-Message': timestamp,
-      };
-    } catch {
-      // User rejected or error occurred
-      return null;
-    }
-  }, [currentAccount, signPersonalMessage]);
 
   return useQuery<DashboardResponse>({
     queryKey: dashboardKeys.detail(dealId),
     queryFn: async () => {
-      const authHeaders = await getAuthHeaders();
-
-      if (!authHeaders) {
-        throw new Error('Authentication required');
+      if (!currentAccount?.address) {
+        throw new Error('Wallet not connected');
       }
 
       const response = await fetch(`/api/v1/deals/${dealId}/dashboard`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          ...authHeaders,
+          'X-Sui-Address': currentAccount.address,
         },
       });
 

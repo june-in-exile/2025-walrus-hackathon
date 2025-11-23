@@ -595,25 +595,24 @@ export class SuiService {
         throw new Error('EARNOUT_PACKAGE_ID not configured');
       }
 
-      if (debugConfig.sui) {
-        console.log('Building create_deal transaction');
-        console.log('Package ID:', config.earnout.packageId);
-        console.log('Agreement Blob ID:', agreementBlobId);
-        console.log('Name:', name);
-        console.log('Buyer:', buyerAddress);
-        console.log('Seller:', sellerAddress);
-        console.log('Auditor:', auditorAddress);
-        console.log('Start Date (ms):', startDateMs);
-        console.log('Period Months:', periodMonths);
-        console.log('KPI Threshold:', kpiThreshold);
-        console.log('Max Payout:', maxPayout);
-        console.log('Headquarter:', headquarter);
-        console.log('Asset IDs:', assetIds);
-        console.log('Asset Useful Lives:', assetUsefulLives);
-        console.log('Subperiod IDs:', subperiodIds);
-        console.log('Subperiod Start Dates:', subperiodStartDates);
-        console.log('Subperiod End Dates:', subperiodEndDates);
-      }
+      // Always log for debugging ArityMismatch error
+      console.log('Building create_deal transaction');
+      console.log('Package ID:', config.earnout.packageId);
+      console.log('Agreement Blob ID:', agreementBlobId);
+      console.log('Name:', name);
+      console.log('Buyer:', buyerAddress);
+      console.log('Seller:', sellerAddress);
+      console.log('Auditor:', auditorAddress);
+      console.log('Start Date (ms):', startDateMs);
+      console.log('Period Months:', periodMonths);
+      console.log('KPI Threshold:', kpiThreshold);
+      console.log('Max Payout:', maxPayout);
+      console.log('Headquarter:', headquarter);
+      console.log('Asset IDs:', assetIds);
+      console.log('Asset Useful Lives:', assetUsefulLives);
+      console.log('Subperiod IDs:', subperiodIds);
+      console.log('Subperiod Start Dates:', subperiodStartDates);
+      console.log('Subperiod End Dates:', subperiodEndDates);
 
       const tx = new Transaction();
 

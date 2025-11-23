@@ -50,18 +50,11 @@ export function useAuditRecords(options: UseAuditRecordsOptions): UseAuditRecord
         params.set('periodId', periodId);
       }
 
-      // Sign authentication headers
-      const timestamp = new Date().toISOString();
-
-      // For now, we'll use a placeholder signature
-      // In production, this should use wallet signing
-      const signature = 'placeholder_signature';
-
+      // Level 1 (Read) authentication - only requires wallet address
       const response = await fetch(`/api/v1/deals/${dealId}/periods/${periodId}/blobs`, {
         headers: {
+          'Content-Type': 'application/json',
           'X-Sui-Address': currentAccount.address,
-          'X-Sui-Signature': signature,
-          'X-Sui-Signature-Message': timestamp,
         },
       });
 

@@ -4,11 +4,20 @@
  * POST /api/v1/walrus/upload?mode=client_encrypted|server_encrypted
  *
  * Handles file uploads to Walrus with hybrid encryption support.
+ *
+ * Authentication: Tiered approach
+ * - Pending uploads (dealId: 'pending'): Level 1 (Read) - Only requires address
+ * - Real deal uploads: Level 2 (Write) - Returns unsigned transaction for on-chain registration
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { walrusController } from '@/src/backend/controllers/controller';
 import { config } from '@/src/shared/config/env';
+import {
+  authenticateReadOperation,
+  authenticateWriteOperation,
+  createAuthErrorResponse,
+} from '@/src/backend/middleware/auth';
 import type { EncryptionMode } from '@/src/shared/types/walrus';
 
 /**
@@ -18,6 +27,35 @@ import type { EncryptionMode } from '@/src/shared/types/walrus';
  */
 export async function POST(request: NextRequest) {
   try {
+    // First, we need to peek at dealId to determine auth level
+    // This is safe because we're just reading formData metadata
+    const formData = await request.formData();
+    const dealId = formData.get('dealId') as string;
+
+    // Check if this is a pending deal upload
+    const isPendingDeal = dealId === 'pending' || dealId === 'null' || !dealId;
+
+    // Authenticate based on upload type
+    let authResult;
+    if (isPendingDeal) {
+      // Level 1: Pending uploads (e.g., M&A agreement before deal creation)
+      // Only requires wallet address, no transaction needed
+      authResult = authenticateReadOperation(request);
+    } else {
+      // Level 2: Real deal uploads (financial documents)
+      // Will return unsigned transaction for on-chain registration
+      authResult = authenticateWriteOperation(request);
+    }
+
+    if (!authResult.authenticated) {
+      return NextResponse.json(
+        createAuthErrorResponse(authResult),
+        { status: authResult.errorCode || 401 }
+      );
+    }
+
+    const userAddress = authResult.address!;
+
     // Get encryption mode from query parameters
     const searchParams = request.nextUrl.searchParams;
     const modeParam = searchParams.get('mode') || config.app.defaultUploadMode;
@@ -57,8 +95,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Delegate to controller
-    return await walrusController.handleUpload(request, mode);
+    // Delegate to controller with authenticated address and formData
+    return await walrusController.handleUpload(formData, userAddress, mode, isPendingDeal);
   } catch (error) {
     console.error('Upload route error:', error);
 

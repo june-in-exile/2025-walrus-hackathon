@@ -1,11 +1,12 @@
 /**
  * React Query hooks for Deals
  * Fetches deals from the real API with wallet authentication
+ *
+ * Authentication: Level 1 (Read) - Only requires wallet address, no signature needed
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { useCurrentAccount, useSignPersonalMessage } from '@mysten/dapp-kit';
-import { useCallback } from 'react';
+import { useCurrentAccount } from '@mysten/dapp-kit';
 import type { DealListResponse, Deal } from '@/src/frontend/lib/api-client';
 import { mockDeals } from '@/src/frontend/lib/mock-data';
 
@@ -18,95 +19,20 @@ export const dealKeys = {
   detail: (id: string) => [...dealKeys.details(), id] as const,
 };
 
-// Cache for signature to avoid re-signing on every query
-interface SignatureCache {
-  signature: string;
-  message: string;
-  timestamp: number;
-  address: string;
-}
-
-// Signature is valid for 4 minutes (API allows 5 minutes)
-const SIGNATURE_CACHE_DURATION = 4 * 60 * 1000;
-const SIGNATURE_CACHE_KEY = 'sui-signature-cache';
-
-// Helper functions for persistent signature cache
-function getPersistedSignatureCache(): SignatureCache | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const cached = sessionStorage.getItem(SIGNATURE_CACHE_KEY);
-    if (!cached) return null;
-    return JSON.parse(cached) as SignatureCache;
-  } catch {
-    return null;
-  }
-}
-
-function setPersistedSignatureCache(cache: SignatureCache): void {
-  if (typeof window === 'undefined') return;
-  try {
-    sessionStorage.setItem(SIGNATURE_CACHE_KEY, JSON.stringify(cache));
-  } catch {
-    // Ignore storage errors
-  }
-}
-
 /**
  * Hook to fetch all deals for the current user
+ *
+ * No signature required - only the wallet address is needed.
+ * Backend filters results to only show deals where the user is buyer/seller/auditor.
  */
 export function useDeals(role?: 'buyer' | 'seller' | 'auditor') {
   const currentAccount = useCurrentAccount();
-  const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
-
-  const getAuthHeaders = useCallback(async (): Promise<Record<string, string> | null> => {
-    if (!currentAccount?.address) return null;
-
-    // Check if we have a valid cached signature in sessionStorage
-    const cache = getPersistedSignatureCache();
-    const now = Date.now();
-    if (cache && cache.address === currentAccount.address && now - cache.timestamp < SIGNATURE_CACHE_DURATION) {
-      return {
-        'X-Sui-Address': currentAccount.address,
-        'X-Sui-Signature': cache.signature,
-        'X-Sui-Signature-Message': cache.message,
-      };
-    }
-
-    // Sign a new timestamp message
-    const timestamp = new Date().toISOString();
-    const messageBytes = new TextEncoder().encode(timestamp);
-
-    try {
-      const { signature } = await signPersonalMessage({
-        message: messageBytes,
-      });
-
-      // Cache the signature in sessionStorage
-      setPersistedSignatureCache({
-        signature,
-        message: timestamp,
-        timestamp: now,
-        address: currentAccount.address,
-      });
-
-      return {
-        'X-Sui-Address': currentAccount.address,
-        'X-Sui-Signature': signature,
-        'X-Sui-Signature-Message': timestamp,
-      };
-    } catch {
-      // User rejected or error occurred
-      return null;
-    }
-  }, [currentAccount, signPersonalMessage]);
 
   return useQuery<DealListResponse>({
     queryKey: dealKeys.list(role || 'all'),
     queryFn: async () => {
-      const authHeaders = await getAuthHeaders();
-
-      if (!authHeaders) {
-        // Return empty list if not authenticated
+      if (!currentAccount?.address) {
+        // Return empty list if wallet not connected
         return {
           items: [],
           total: 0,
@@ -123,7 +49,7 @@ export function useDeals(role?: 'buyer' | 'seller' | 'auditor') {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          ...authHeaders,
+          'X-Sui-Address': currentAccount.address,
         },
       });
 

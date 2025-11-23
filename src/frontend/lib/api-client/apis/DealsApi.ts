@@ -19,10 +19,8 @@ import type {
   SetParametersResponse,
 } from '../models/index';
 import {
-    SetParametersRequestFromJSON,
     SetParametersRequestToJSON,
     SetParametersResponseFromJSON,
-    SetParametersResponseToJSON,
 } from '../models/index';
 
 export interface SetDealParametersRequest {

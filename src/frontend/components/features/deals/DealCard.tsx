@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, Calendar, TrendingUp, CheckCircle2 } from 'lucide-react';
 import type { DealSummary } from '@/src/frontend/lib/api-client';
+import { cn } from '@/lib/utils';
 
 interface DealCardProps {
   deal: DealSummary;
@@ -44,7 +45,9 @@ export function DealCard({ deal }: DealCardProps) {
   };
 
   return (
-    <Card className="hover:shadow-lg transition-shadow">
+    <Card className={cn("hover:shadow-lg transition-shadow", {
+      'border-2 border-green-500': deal.status === 'completed',
+    })}>
       <CardHeader>
         <div className="flex items-start justify-between">
           <div className="flex-1">

@@ -9,22 +9,41 @@
  */
 
 import { useState, useCallback } from 'react';
-import { useCurrentAccount, useSuiClient, useSignPersonalMessage } from '@mysten/dapp-kit';
+import { useCurrentAccount, useSuiClient, useSignPersonalMessage, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
+import { Transaction } from '@mysten/sui/transactions';
 import { walrusBlobService, type DownloadProgress } from '@/src/frontend/services/walrus-blob-service';
 import { decryptData } from '@/src/frontend/lib/seal';
 import type { KPIResultWithAttestation } from '@/src/frontend/services/tee-service';
 
 export interface KPICalculationProgress {
-  phase: 'idle' | 'downloading' | 'decrypting' | 'calculating' | 'completed' | 'error';
+  phase: 'idle' | 'downloading' | 'decrypting' | 'calculating' | 'submitting' | 'checking_settlement' | 'completed' | 'error';
   message: string;
   downloadProgress?: DownloadProgress;
   decryptProgress?: { current: number; total: number };
   documentsFound?: number;
 }
 
+export interface SettlementStatus {
+  isSettled: boolean;
+  kpiValue: number;
+  kpiThreshold: number;
+  settledAmount: number;
+  maxPayout: number;
+  shortfall?: number; // How much KPI is short of threshold
+  transactionDigest?: string;
+}
+
 export interface KPICalculationResult extends KPIResultWithAttestation {
   documentsProcessed: number;
   calculationTime: number; // ms
+  auditedDocuments: {
+    blobId: string;
+    filename: string;
+    auditor: string;
+    auditTimestamp: number;
+    dataType?: string;
+  }[];
+  settlement?: SettlementStatus;
 }
 
 export interface UseKPICalculationReturn {
@@ -40,6 +59,7 @@ export function useKPICalculation(): UseKPICalculationReturn {
   const currentAccount = useCurrentAccount();
   const suiClient = useSuiClient();
   const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
+  const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction();
   const [isCalculating, setIsCalculating] = useState(false);
   const [progress, setProgress] = useState<KPICalculationProgress>({
     phase: 'idle',
@@ -86,25 +106,34 @@ export function useKPICalculation(): UseKPICalculationReturn {
         throw new Error('No blobs found for this deal');
       }
 
+      // Filter only audited blobs
+      const auditedBlobs = allBlobs.filter(blob => blob.auditStatus?.audited === true);
+
+      if (auditedBlobs.length === 0) {
+        throw new Error(`No audited blobs found for this deal. Total blobs: ${allBlobs.length}, but none have been audited yet.`);
+      }
+
+      console.log(`Found ${allBlobs.length} total blobs, ${auditedBlobs.length} audited blobs`);
+
       setProgress({
         phase: 'downloading',
-        message: `Found ${allBlobs.length} blobs. Downloading and processing...`,
+        message: `Found ${auditedBlobs.length} audited blobs (${allBlobs.length} total). Downloading and processing...`,
         downloadProgress: {
-          total: allBlobs.length,
+          total: auditedBlobs.length,
           downloaded: 0,
           processed: 0,
         },
       });
 
-      // Download encrypted blobs
+      // Download encrypted blobs (only audited ones)
       const encryptedBlobs = await walrusBlobService.downloadAndProcessBlobs(
         dealId,
-        allBlobs,
+        auditedBlobs,
         userAddress,
         (downloadProgress) => {
           setProgress({
             phase: 'downloading',
-            message: `Downloading: ${downloadProgress.downloaded}/${downloadProgress.total}`,
+            message: `Downloading audited blobs: ${downloadProgress.downloaded}/${downloadProgress.total}`,
             downloadProgress,
           });
         }
@@ -127,13 +156,23 @@ export function useKPICalculation(): UseKPICalculationReturn {
       }
 
       const documents: any[] = [];
+      const processedAuditedDocs: {
+        blobId: string;
+        filename: string;
+        auditor: string;
+        auditTimestamp: number;
+        dataType?: string;
+      }[] = [];
 
       for (let i = 0; i < encryptedBlobs.length; i++) {
         const blob = encryptedBlobs[i];
 
+        // Find the corresponding audited blob info
+        const auditedBlobInfo = auditedBlobs.find(ab => ab.blobId === blob.blobId);
+
         setProgress({
           phase: 'decrypting',
-          message: `Decrypting blob ${i + 1}/${encryptedBlobs.length}...`,
+          message: `Decrypting audited blob ${i + 1}/${encryptedBlobs.length}...`,
           decryptProgress: { current: i, total: encryptedBlobs.length },
         });
 
@@ -155,7 +194,18 @@ export function useKPICalculation(): UseKPICalculationReturn {
 
           documents.push(parsedDoc);
 
-          console.log(`✅ Blob ${blob.blobId} decrypted and parsed`);
+          // Record the audited document info
+          if (auditedBlobInfo?.auditStatus?.audited) {
+            processedAuditedDocs.push({
+              blobId: blob.blobId,
+              filename: auditedBlobInfo.metadata?.filename || 'Unknown',
+              auditor: auditedBlobInfo.auditStatus.auditor || 'unknown',
+              auditTimestamp: auditedBlobInfo.auditStatus.auditTimestamp || 0,
+              dataType: auditedBlobInfo.dataType,
+            });
+          }
+
+          console.log(`✅ Audited blob ${blob.blobId} decrypted and parsed`);
         } catch (error) {
           console.error(`Failed to decrypt/parse blob ${blob.blobId}:`, error);
           // Continue with other blobs
@@ -168,14 +218,14 @@ export function useKPICalculation(): UseKPICalculationReturn {
 
       setProgress({
         phase: 'decrypting',
-        message: `Decrypted ${documents.length} documents`,
+        message: `Decrypted ${documents.length} audited documents`,
         documentsFound: documents.length,
       });
 
       // Phase 3: Calculate KPI using TEE API
       setProgress({
         phase: 'calculating',
-        message: `Calculating KPI from ${documents.length} documents...`,
+        message: `Calculating KPI from ${documents.length} audited documents...`,
         documentsFound: documents.length,
       });
 
@@ -225,23 +275,146 @@ export function useKPICalculation(): UseKPICalculationReturn {
         attestation_bytes: teeResult.attestation_bytes,
         documentsProcessed: documents.length,
         calculationTime: Date.now() - startTime,
+        auditedDocuments: processedAuditedDocs,
       };
 
-      // Phase 4: Completed
+      console.log('✅ KPI Calculation Complete:', {
+        kpi: calculationResult.kpi_result.kpi,
+        documents: calculationResult.documentsProcessed,
+        auditedDocuments: calculationResult.auditedDocuments.length,
+        time: calculationResult.calculationTime,
+      });
+
+      console.log('📋 Audited documents used in calculation:',
+        calculationResult.auditedDocuments.map(doc => ({
+          filename: doc.filename,
+          blobId: doc.blobId,
+          dataType: doc.dataType,
+          auditor: doc.auditor,
+          auditedAt: new Date(doc.auditTimestamp).toISOString(),
+        }))
+      );
+
+      // Phase 5: Submit KPI and Settlement to blockchain
+      setProgress({
+        phase: 'submitting',
+        message: 'Submitting KPI result to blockchain...',
+        documentsFound: documents.length,
+      });
+
+      const EARNOUT_PACKAGE_ID = process.env.NEXT_PUBLIC_EARNOUT_PACKAGE_ID;
+      if (!EARNOUT_PACKAGE_ID) {
+        throw new Error('NEXT_PUBLIC_EARNOUT_PACKAGE_ID not configured');
+      }
+
+      try {
+        // Build transaction
+        const tx = new Transaction();
+
+        // Get a payment coin (0 SUI since settlement doesn't actually transfer)
+        const [coin] = tx.splitCoins(tx.gas, [0]);
+
+        // Use kpi value directly from calculation result
+        // On-chain values are stored as integers (e.g., 75000 = $75,000)
+        // NOT multiplied by 1000
+        const kpiValueU64 = Math.round(calculationResult.kpi_result.kpi);
+        const kpiValue = calculationResult.kpi_result.kpi;
+
+        console.log('📝 Building settlement transaction:', {
+          dealId,
+          kpiValue,
+          kpiValueU64,
+          attestationBytes: calculationResult.attestation_bytes.length,
+        });
+
+        // Call submit_kpi_and_settle
+        tx.moveCall({
+          target: `${EARNOUT_PACKAGE_ID}::earnout::submit_kpi_and_settle`,
+          arguments: [
+            tx.object(dealId),
+            tx.pure.string('net_profit'), // kpi_type
+            tx.pure.u64(kpiValueU64), // kpi_value (direct integer, e.g., 75000 = $75,000)
+            tx.pure.vector('u8', calculationResult.attestation_bytes), // attestation
+            coin, // payment coin
+            tx.object('0x6'), // clock
+          ],
+        });
+
+        console.log('🔐 Requesting user signature for settlement...');
+
+        // Execute transaction
+        const txResult = await signAndExecuteTransaction({
+          transaction: tx,
+        });
+
+        console.log('✅ Settlement transaction executed:', {
+          digest: txResult.digest,
+        });
+
+        // Wait for transaction confirmation
+        await suiClient.waitForTransaction({
+          digest: txResult.digest,
+        });
+
+        console.log('✅ Settlement confirmed on-chain');
+
+        // Phase 6: Check settlement status
+        setProgress({
+          phase: 'checking_settlement',
+          message: 'Checking settlement status...',
+          documentsFound: documents.length,
+        });
+
+        // Query Deal object to get settlement status
+        const dealObject = await suiClient.getObject({
+          id: dealId,
+          options: {
+            showContent: true,
+          },
+        });
+
+        if (!dealObject.data?.content || dealObject.data.content.dataType !== 'moveObject') {
+          throw new Error('Failed to fetch deal settlement status');
+        }
+
+        const dealFields = dealObject.data.content.fields as any;
+        const isSettled = dealFields.is_settled as boolean;
+        const settledAmount = parseInt(dealFields.settled_amount as string);
+        const kpiThreshold = parseInt(dealFields.kpi_threshold as string);
+        const maxPayout = parseInt(dealFields.max_payout as string);
+
+        // On-chain values are stored as integers (no conversion needed)
+        // e.g., 900000 = $900,000
+        const kpiThresholdActual = kpiThreshold;
+        const shortfall = isSettled ? 0 : Math.max(0, kpiThresholdActual - kpiValue);
+
+        const settlementStatus: SettlementStatus = {
+          isSettled,
+          kpiValue,
+          kpiThreshold: kpiThresholdActual,
+          settledAmount: settledAmount,
+          maxPayout: maxPayout,
+          shortfall,
+          transactionDigest: txResult.digest,
+        };
+
+        calculationResult.settlement = settlementStatus;
+
+        console.log('📊 Settlement Status:', settlementStatus);
+
+      } catch (settlementError) {
+        console.warn('Settlement submission failed, but KPI calculation succeeded:', settlementError);
+        // Don't throw - KPI calculation was successful, just settlement failed
+      }
+
       setProgress({
         phase: 'completed',
-        message: `KPI calculated successfully`,
+        message: 'KPI calculation and settlement complete',
         documentsFound: documents.length,
       });
 
       setResult(calculationResult);
       setIsCalculating(false);
-
-      console.log('✅ KPI Calculation Complete:', {
-        kpi: calculationResult.kpi_result.kpi,
-        documents: calculationResult.documentsProcessed,
-        time: calculationResult.calculationTime,
-      });
 
       return calculationResult;
     } catch (err) {
@@ -257,7 +430,7 @@ export function useKPICalculation(): UseKPICalculationReturn {
 
       return null;
     }
-  }, [currentAccount, suiClient, signPersonalMessage]);
+  }, [currentAccount, suiClient, signPersonalMessage, signAndExecuteTransaction]);
 
   return {
     isCalculating,

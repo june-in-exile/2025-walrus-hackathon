@@ -59,7 +59,7 @@ export default function CreateDealPage() {
     resolver: zodResolver(createDealSchema),
     defaultValues: {
       earnoutPeriodYears: 3,
-      kpiTargetAmount: 700000,
+      kpiTargetAmount: 900000,
       contingentConsiderationAmount: 30000000,
       headquarterExpenseAllocationPercentage: 0.1,
       startDate: '2025-11-03',
@@ -396,7 +396,7 @@ export default function CreateDealPage() {
                 id="kpiTargetAmount"
                 type="number"
                 step="1"
-                placeholder="e.g., 700000"
+                placeholder="e.g., 900000"
                 {...register('kpiTargetAmount', { valueAsNumber: true })}
               />
               {errors.kpiTargetAmount && (

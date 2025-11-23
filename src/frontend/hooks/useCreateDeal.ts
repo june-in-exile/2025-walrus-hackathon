@@ -89,6 +89,8 @@ export function useCreateDeal(): UseCreateDealReturn {
         // 1. Call API to build transaction (no signature required)
         toast.loading('Creating deal transaction...', { id: 'create-deal' });
 
+        console.log("kpiThreshold: ", kpiThreshold);
+
         const response = await fetch('/api/v1/deals', {
           method: 'POST',
           headers: {

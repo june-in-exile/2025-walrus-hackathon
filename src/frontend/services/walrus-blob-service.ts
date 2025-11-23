@@ -18,6 +18,25 @@ export interface BlobRef {
   dataType?: string; // Optional: from Walrus metadata
   uploadedAt?: string;
   uploaderAddress?: string;
+  metadata?: {
+    filename?: string;
+    mimeType?: string;
+    description?: string;
+    dealId?: string;
+    periodId?: string;
+    encrypted?: boolean;
+    encryptionMode?: string;
+    uploadedAt?: string;
+    uploaderAddress?: string;
+    dataType?: string;
+    customDataType?: string;
+  };
+  auditStatus?: {
+    audited: boolean;
+    auditor?: string;
+    auditTimestamp?: number;
+    auditRecordId?: string;
+  };
 }
 
 export interface DownloadProgress {

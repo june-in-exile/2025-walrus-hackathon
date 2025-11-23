@@ -19,7 +19,7 @@ export interface KPIResult {
 }
 
 export interface TEEAttestation {
-  kpi_value: number; // u64 representation (kpi * 1000)
+  kpi_value: number; // u64 representation (integer, e.g., 75000 = $75,000)
   computation_hash: Buffer; // 32 bytes
   timestamp: number; // Unix timestamp in ms
   tee_public_key: Buffer; // 32 bytes
@@ -212,8 +212,9 @@ export function calculateKPIWithMockAttestation(
   // Get current timestamp
   const timestamp = Date.now();
 
-  // Convert KPI to u64 (multiply by 1000 to preserve 3 decimals)
-  const kpiValueU64 = Math.round(kpiResult.kpi * 1000);
+  // Convert KPI to u64 (round to integer, no multiplication)
+  // e.g., 75000 stays as 75000 (representing $75,000)
+  const kpiValueU64 = Math.round(kpiResult.kpi);
 
   // Generate or use provided mock keypair
   let teePrivateKey: Buffer;
@@ -305,7 +306,7 @@ export function verifyAttestationLocally(
   const errors: string[] = [];
 
   // Check KPI value matches
-  const expectedU64 = Math.round(expectedKPIValue * 1000);
+  const expectedU64 = Math.round(expectedKPIValue);
   if (attestation.kpi_value !== expectedU64) {
     errors.push(
       `KPI value mismatch: expected ${expectedU64}, got ${attestation.kpi_value}`

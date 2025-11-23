@@ -12,7 +12,7 @@ export interface KPIResult {
 }
 
 export interface TEEAttestation {
-  kpi_value: number; // u64 representation (kpi * 1000)
+  kpi_value: number; // u64 representation (integer, e.g., 75000 = $75,000)
   computation_hash: Uint8Array; // 32 bytes
   timestamp: number; // Unix timestamp in ms
   tee_public_key: Uint8Array; // 32 bytes
@@ -156,7 +156,7 @@ export class TEEService {
       );
 
       // Check KPI value matches
-      const expectedU64 = Math.round(expectedKPIValue * 1000);
+      const expectedU64 = Math.round(expectedKPIValue);
       const kpiMatches = attestation.kpi_value === expectedU64;
 
       return isValid && kpiMatches;
@@ -188,7 +188,7 @@ export class MockTEEService extends TEEService {
     }
 
     // Generate mock attestation (WARNING: Not cryptographically secure!)
-    const kpi_value_u64 = Math.round(cumulativeKPI * 1000);
+    const kpi_value_u64 = Math.round(cumulativeKPI);
     const computation_hash = new Uint8Array(32).fill(0); // Mock hash
     const timestamp = Date.now();
     const tee_public_key = new Uint8Array(32).fill(1); // Mock public key

@@ -53,12 +53,22 @@ paths:
         - Transaction binds blob to specific deal/period
         - This creates immutable audit trail of data submissions
 
-        **Access Control**:
-        - Role: Authenticated users (primarily buyer uploading data)
-        - Verification: User must be a participant in the specified deal
+        **Authentication**: Level 2 (Write)
+        - Requires: `X-Sui-Address` header only
+        - API uploads file to Walrus and returns unsigned transaction
+        - User signs transaction in wallet to register blob on-chain
+        - Transaction execution verifies user is authorized participant
+
+        **Security Flow**:
+        1. API validates address and uploads encrypted file to Walrus
+        2. API returns blobId and unsigned transaction bytes
+        3. User signs transaction in wallet
+        4. Transaction executes on-chain - Move contract verifies permissions
       operationId: uploadToWalrus
       tags:
         - Walrus
+      security:
+        - Level2Auth: []
       parameters:
         - name: mode
           in: query
@@ -78,21 +88,6 @@ paths:
             type: string
             pattern: "^0x[a-fA-F0-9]{64}$"
           description: Sui wallet address of uploader
-        - name: X-Sui-Signature
-          in: header
-          required: true
-          schema:
-            type: string
-          description: Base64-encoded signature of the timestamp message
-        - name: X-Sui-Signature-Message
-          in: header
-          required: true
-          schema:
-            type: string
-            format: date-time
-          description: |
-            ISO timestamp that was signed (e.g., "2025-11-20T10:30:45.123Z").
-            Must be within 5 minutes of current time to prevent replay attacks.
       requestBody:
         required: true
         content:
@@ -259,19 +254,23 @@ paths:
         - Frontend uses these to request decryption keys from Seal Key Servers
         - Access control is enforced by the whitelist Move contract on Sui blockchain
 
-        **Access Control**:
-        - Verification: User must be buyer/seller/auditor in the specified deal
-        - On-chain check: Backend queries Sui blockchain to verify user's role via whitelist
-        - Only authorized users can decrypt the data
+        **Authentication**: Level 1 (Read)
+        - Requires: `X-Sui-Address` header only
+        - No signature required for download
+        - Backend verifies user is buyer/seller/auditor via Sui blockchain query
+        - Returns encrypted ciphertext (frontend decrypts with Seal)
 
         **Security Features**:
         - Backend never decrypts or sees plaintext during download
         - All access attempts are logged for audit trail
         - Invalid access attempts return 403 Forbidden
         - Decryption keys are fetched on-demand from Seal Key Servers (not stored)
+        - Even if unauthorized user gets ciphertext, they cannot decrypt without proper role
       operationId: downloadFromWalrus
       tags:
         - Walrus
+      security:
+        - Level1Auth: []
       parameters:
         - name: blobId
           in: path
@@ -295,21 +294,6 @@ paths:
             type: string
             pattern: "^0x[a-fA-F0-9]{64}$"
           description: Sui wallet address requesting download
-        - name: X-Sui-Signature
-          in: header
-          required: true
-          schema:
-            type: string
-          description: Base64-encoded signature of the timestamp message
-        - name: X-Sui-Signature-Message
-          in: header
-          required: true
-          schema:
-            type: string
-            format: date-time
-          description: |
-            ISO timestamp that was signed (e.g., "2025-11-20T10:30:45.123Z").
-            Must be within 5 minutes of current time to prevent replay attacks.
       responses:
         "200":
           description: File successfully downloaded

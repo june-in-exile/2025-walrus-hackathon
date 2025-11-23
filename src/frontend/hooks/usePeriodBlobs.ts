@@ -18,6 +18,12 @@ export interface PeriodBlobReference {
     periodId?: string;
     mimeType?: string;
   };
+  auditStatus?: {
+    auditRecordId: string;
+    audited: boolean;
+    auditTimestamp?: number;
+    auditor?: string;
+  };
 }
 
 export interface PeriodBlobsResponse {

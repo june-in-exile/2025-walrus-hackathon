@@ -18,6 +18,9 @@ export async function GET(
     // Get all on-chain blob references
     const onChainBlobRefs = await suiService.getDealBlobReferences(dealId);
 
+    // Get all audit records for this deal (parallel query)
+    const auditRecordsPromise = suiService.getDealAuditRecords(dealId);
+
     // Fetch metadata from Walrus for each blob
     const blobRefsWithMetadata = await Promise.all(
       onChainBlobRefs.map(async (ref) => {
@@ -26,7 +29,7 @@ export async function GET(
           // A future optimization would be to have a method in WalrusService
           // that only fetches the metadata header.
           const walrusBlob = await walrusService.download(ref.blobId);
-    
+
           return {
             ...ref,
             metadata: {
@@ -48,14 +51,34 @@ export async function GET(
       })
     );
 
-    // Return blob references with combined metadata
-    const blobRefs: BlobReference[] = blobRefsWithMetadata.map((ref) => ({
-      blobId: ref.blobId,
-      dataType: ref.dataType as DataType,
-      uploadedAt: ref.uploadedAt,
-      uploaderAddress: ref.uploaderAddress,
-      metadata: ref.metadata, // Use on-chain metadata if available
-    }));
+    // Wait for audit records query to complete
+    const auditRecords = await auditRecordsPromise;
+
+    // Create a map for efficient lookup: blobId -> auditRecord
+    const auditMap = new Map(
+      auditRecords.map(record => [record.dataId, record])
+    );
+
+    // Return blob references with combined metadata and audit status
+    const blobRefs: BlobReference[] = blobRefsWithMetadata.map((ref) => {
+      const auditRecord = auditMap.get(ref.blobId);
+
+      return {
+        blobId: ref.blobId,
+        dataType: ref.dataType as DataType,
+        uploadedAt: ref.uploadedAt,
+        uploaderAddress: ref.uploaderAddress,
+        metadata: ref.metadata, // Use on-chain metadata if available
+        auditStatus: auditRecord ? {
+          audited: auditRecord.audited,
+          auditor: auditRecord.auditor,
+          auditTimestamp: auditRecord.auditTimestamp,
+          auditRecordId: auditRecord.id,
+        } : {
+          audited: false,
+        },
+      };
+    });
 
     return NextResponse.json(blobRefs);
   } catch (error) {

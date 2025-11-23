@@ -337,16 +337,21 @@ export default function DocumentsPage() {
     }
   };
 
-  const getStatusBadge = (status?: string) => {
-    switch (status) {
-      case 'approved':
-        return <Badge variant="secondary" className="gap-1"><CheckCircle2 className="h-3 w-3" />Approved</Badge>;
-      case 'changes_requested':
-        return <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" />Changes Requested</Badge>;
-      case 'pending':
-      default:
-        return <Badge variant="outline" className="gap-1"><AlertCircle className="h-3 w-3" />Pending Review</Badge>;
+  const getStatusBadge = (audited?: boolean) => {
+    if (audited) {
+      return (
+        <Badge variant="default" className="gap-1 bg-green-600 hover:bg-green-700">
+          <CheckCircle2 className="h-3 w-3" />
+          Audited
+        </Badge>
+      );
     }
+    return (
+      <Badge variant="outline" className="gap-1">
+        <AlertCircle className="h-3 w-3" />
+        Pending Review
+      </Badge>
+    );
   };
 
   const pageTitle = currentRole === 'buyer' ? 'Upload Documents' : currentRole === 'auditor' ? 'Review Documents' : 'View Documents';
@@ -571,10 +576,15 @@ export default function DocumentsPage() {
                     {/* Existing blobs from blockchain */}
                     {existingBlobs.map((blob) => {
                       const filename = blob.metadata?.filename || blob.metadata?.customDataType || blob.dataType;
+                      const isAudited = blob.auditStatus?.audited || false;
                       return (
                         <div
                           key={blob.blobId}
-                          className="p-4 rounded-lg border bg-muted/30"
+                          className={`p-4 rounded-lg border ${
+                            isAudited
+                              ? 'border-green-500 bg-green-50/50 dark:bg-green-950/20'
+                              : 'bg-muted/30'
+                          }`}
                         >
                           <div className="flex items-start justify-between mb-2">
                             <div className="flex items-center gap-3 flex-1">
@@ -606,9 +616,9 @@ export default function DocumentsPage() {
                             </Button>
                           </div>
 
-                        {/* Status Badge - Note: Audit status not yet integrated */}
+                        {/* Status Badge */}
                         <div className="mb-2">
-                          {getStatusBadge('pending')}
+                          {getStatusBadge(isAudited)}
                         </div>
 
                         {/* Uploader info */}
@@ -638,7 +648,7 @@ export default function DocumentsPage() {
                           </div>
                         </div>
                         <div className="mt-2">
-                          {getStatusBadge('pending')}
+                          {getStatusBadge(false)}
                         </div>
                       </div>
                     ))}

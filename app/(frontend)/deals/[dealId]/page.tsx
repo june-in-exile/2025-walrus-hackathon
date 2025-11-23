@@ -158,6 +158,7 @@ export default function DealDashboardPage() {
               <Button
                 variant="outline"
                 onClick={() => router.push(`/deals/${dealId}/blobs`)}
+                className="cursor-pointer"
               >
                 <FileText className="mr-2 h-4 w-4" />
                 View All Documents

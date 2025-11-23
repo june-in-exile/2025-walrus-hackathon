@@ -399,7 +399,7 @@ export default function DataAuditPage() {
                               ) : (
                                 <>
                                   <Shield className="mr-2 h-4 w-4" />
-                                  Audit & Sign
+                                  Audit
                                 </>
                               )}
                             </Button>

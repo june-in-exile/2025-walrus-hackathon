@@ -51,10 +51,9 @@ components:
           example: "0x9876543210abcdef1234567890abcdef1234567890abcdef1234567890abcd"
         status:
           type: string
-          enum: ["draft", "active", "completed", "cancelled"]
+          enum: ["active", "completed", "cancelled"]
           description: |
             Current status of the deal:
-            - draft: Parameters not yet locked
             - active: Parameters locked, periods in progress
             - completed: All periods settled
             - cancelled: Deal terminated
@@ -235,7 +234,7 @@ components:
           example: "USD"
         status:
           type: string
-          enum: ["draft", "active", "completed", "cancelled"]
+          enum: ["active", "completed", "cancelled"]
           example: "active"
         userRole:
           type: string

@@ -7,7 +7,7 @@ import { DealCard } from '@/src/frontend/components/features/deals/DealCard';
 import { WalletButton } from '@/src/frontend/components/wallet/WalletButton';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, Briefcase, TrendingUp, CheckCircle2, FileText, Wallet, Plus } from 'lucide-react';
+import { Loader2, Briefcase, TrendingUp, CheckCircle2, Wallet, Plus } from 'lucide-react';
 import Link from 'next/link';
 
 export default function DealsPage() {
@@ -86,7 +86,7 @@ export default function DealsPage() {
           </div>
 
           {/* Stats Cards */}
-          <div className="grid gap-4 md:grid-cols-4 mt-8">
+          <div className="grid gap-4 md:grid-cols-3 mt-8">
             <StatsCard
               icon={<Briefcase className="h-5 w-5" />}
               label="Total Deals"
@@ -104,12 +104,6 @@ export default function DealsPage() {
               label="Completed"
               value={stats.completedDeals}
               color="purple"
-            />
-            <StatsCard
-              icon={<FileText className="h-5 w-5" />}
-              label="Drafts"
-              value={stats.draftDeals}
-              color="gray"
             />
           </div>
         </div>

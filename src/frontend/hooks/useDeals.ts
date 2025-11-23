@@ -97,7 +97,6 @@ export function useDealStats(role?: 'buyer' | 'seller' | 'auditor') {
       totalDeals: 0,
       activeDeals: 0,
       completedDeals: 0,
-      draftDeals: 0,
     };
   }
 
@@ -105,6 +104,5 @@ export function useDealStats(role?: 'buyer' | 'seller' | 'auditor') {
     totalDeals: data.total,
     activeDeals: data.items.filter((d) => d.status === 'active').length,
     completedDeals: data.items.filter((d) => d.status === 'completed').length,
-    draftDeals: data.items.filter((d) => d.status === 'draft').length,
   };
 }

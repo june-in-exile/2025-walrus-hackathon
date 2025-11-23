@@ -15,8 +15,10 @@ import {
   useSignAndExecuteTransaction,
   useCurrentAccount,
 } from '@mysten/dapp-kit';
+import { useQueryClient } from '@tanstack/react-query';
 import { fromHex } from '@mysten/sui/utils';
 import { toast } from 'sonner';
+import { dealKeys } from './useDeals';
 
 interface CreateDealOptions {
   agreementBlobId: string;
@@ -46,6 +48,7 @@ interface UseCreateDealReturn {
 export function useCreateDeal(): UseCreateDealReturn {
   const currentAccount = useCurrentAccount();
   const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction();
+  const queryClient = useQueryClient();
 
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -140,6 +143,10 @@ export function useCreateDeal(): UseCreateDealReturn {
         toast.success('Deal created successfully!', {
           description: `Transaction: ${result.digest.slice(0, 16)}...`,
         });
+
+        // Invalidate deals cache to force refetch when navigating to deals page
+        await queryClient.invalidateQueries({ queryKey: dealKeys.lists() });
+
         onSuccess?.(result.digest);
       } catch (err) {
         // This catch block handles errors from the entire process,
@@ -164,7 +171,7 @@ export function useCreateDeal(): UseCreateDealReturn {
         setIsCreating(false);
       }
     },
-    [currentAccount, signAndExecuteTransaction]
+    [currentAccount, signAndExecuteTransaction, queryClient]
   );
 
   return {

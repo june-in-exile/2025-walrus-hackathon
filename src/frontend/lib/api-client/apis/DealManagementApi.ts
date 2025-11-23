@@ -2,7 +2,7 @@
 /* eslint-disable */
 /**
  * M&A Earn-out API
- * # M&A Earn-out Management API  This API powers a decentralized M&A earn-out tracking and settlement system built on **Sui blockchain**, **Walrus decentralized storage**, and **Seal encryption**.  ## System Overview  The system enables buyers (acquirers), sellers, and auditors to: - Create and manage earn-out agreements on-chain - Store encrypted financial documents on Walrus - Track KPIs and verify calculations transparently - Execute settlements automatically based on audited KPIs  ## Technology Stack  - **Blockchain**: Sui Network (smart contracts in Move) - **Storage**: Walrus (decentralized file storage) - **Encryption**: Seal (role-based access control) - **Frontend**: Next.js with @mysten/dapp-kit  ## Key Concepts  ### Deal An on-chain earn-out agreement with defined periods, KPI types, and payout formulas. Each deal has three roles: - **Buyer**: Creates deal, uploads data, proposes KPIs, executes settlements - **Seller**: Monitors progress, receives payouts - **Auditor**: Verifies data, attests KPIs  ### Period A time range (e.g., fiscal year) with specific KPI targets and earn-out formulas. Each period progresses through stages: 1. Data Collection (buyer uploads financial documents) 2. KPI Proposal (buyer proposes calculated KPI) 3. KPI Attestation (auditor verifies and approves) 4. Settlement (buyer executes payout to seller)  ### Walrus Blobs Encrypted financial documents stored on Walrus network. Access controlled by Seal policy on Sui blockchain.  ### KPI (Key Performance Indicator) Metrics like revenue, EBITDA, or custom metrics that determine earn-out amounts according to on-chain formulas.  ## Authentication  This API uses **Sui wallet signature-based authentication**. Every request must include: - `X-Sui-Address`: User\'s Sui wallet address - `X-Sui-Signature`: Base64-encoded signature of the timestamp message - `X-Sui-Signature-Message`: ISO timestamp that was signed (e.g., \"2025-11-20T10:30:45.123Z\")  Signatures expire after **5 minutes** to prevent replay attacks. Role-based access control is enforced on-chain via Sui smart contracts.  ## Workflow  1. **Setup**: Buyer creates deal and sets earn-out parameters 2. **Data Upload**: Buyer uploads encrypted financial docs to Walrus (via upload relay) 3. **KPI Proposal**: After period ends, buyer proposes KPI value 4. **Verification**: Auditor decrypts docs, verifies calculations, attests KPI 5. **Settlement**: Buyer executes settlement, funds transferred to seller  ## API Organization  - **Deal Management**: Create and manage earn-out deals - **Parameters**: Configure earn-out formulas and periods - **Walrus**: Upload relay for encrypted file storage - **Timeline**: View data submission history - **KPI Management**: Propose and attest KPIs - **Settlement**: Execute earn-out payments - **Dashboard**: Aggregated view of deal status 
+ * # M&A Earn-out Management API  This API powers a decentralized M&A earn-out tracking and settlement system built on **Sui blockchain**, **Walrus decentralized storage**, and **Seal encryption**.  ## System Overview  The system enables buyers (acquirers), sellers, and auditors to: - Create and manage earn-out agreements on-chain - Store encrypted financial documents on Walrus - Track KPIs and verify calculations transparently - Execute settlements automatically based on audited KPIs  ## Technology Stack  - **Blockchain**: Sui Network (smart contracts in Move) - **Storage**: Walrus (decentralized file storage) - **Encryption**: Seal (role-based access control) - **Frontend**: Next.js with @mysten/dapp-kit  ## Key Concepts  ### Deal An on-chain earn-out agreement with defined periods, KPI types, and payout formulas. Each deal has three roles: - **Buyer**: Creates deal, uploads data, proposes KPIs, executes settlements - **Seller**: Monitors progress, receives payouts - **Auditor**: Verifies data, attests KPIs  ### Period A time range (e.g., fiscal year) with specific KPI targets and earn-out formulas. Each period progresses through stages: 1. Data Collection (buyer uploads financial documents) 2. KPI Proposal (buyer proposes calculated KPI) 3. KPI Attestation (auditor verifies and approves) 4. Settlement (buyer executes payout to seller)  ### Walrus Blobs Encrypted financial documents stored on Walrus network. Access controlled by Seal policy on Sui blockchain.  ### KPI (Key Performance Indicator) Metrics like revenue, EBITDA, or custom metrics that determine earn-out amounts according to on-chain formulas.  ## Authentication  This API uses a **tiered authentication system** designed for optimal UX and security:  ### Level 1: Read Operations (Address-only Authentication)  **For**: GET endpoints (listing deals, viewing dashboard, querying data)  **Requirements**: - `X-Sui-Address`: User\'s Sui wallet address (0x + 64 hex characters)  **Security**: - Backend validates address format - Backend filters all queries to only return data accessible to the provided address - Works with all wallet types (traditional wallets + zkLogin)  **No signature required** - provides frictionless browsing experience after wallet connection.  ### Level 2: Write Operations (On-Chain Signature)  **For**: POST/PUT endpoints that modify blockchain state (create deal, upload files, submit audit)  **Requirements**: - `X-Sui-Address`: User\'s Sui wallet address  **Security**: - API returns unsigned transaction bytes - Frontend prompts user to sign transaction with their wallet - Transaction is executed on-chain with full cryptographic verification - Move smart contracts enforce all permissions and business logic  **User signs once per transaction** - only when making important state changes.  ### Why This Design?  - **Better UX**: No signature prompts for read operations - **zkLogin Compatible**: Works with OAuth-based wallets (Google, Facebook) - **Secure**: Write operations protected by blockchain signatures - **Simple**: Stateless backend, no session management  ## Workflow  1. **Setup**: Buyer creates deal and sets earn-out parameters 2. **Data Upload**: Buyer uploads encrypted financial docs to Walrus (via upload relay) 3. **KPI Proposal**: After period ends, buyer proposes KPI value 4. **Verification**: Auditor decrypts docs, verifies calculations, attests KPI 5. **Settlement**: Buyer executes settlement, funds transferred to seller  ## API Organization  - **Deal Management**: Create and manage earn-out deals - **Parameters**: Configure earn-out formulas and periods - **Walrus**: Upload relay for encrypted file storage - **Timeline**: View data submission history - **KPI Management**: Propose and attest KPIs - **Settlement**: Execute earn-out payments - **Dashboard**: Aggregated view of deal status 
  *
  * The version of the OpenAPI document: 1.0.0
  * 
@@ -17,6 +17,7 @@ import * as runtime from '../runtime';
 import type {
   CreateDealRequest,
   CreateDealResponse,
+  DashboardResponse,
   Deal,
   DealListResponse,
   ErrorResponse,
@@ -30,6 +31,8 @@ import {
     CreateDealRequestToJSON,
     CreateDealResponseFromJSON,
     CreateDealResponseToJSON,
+    DashboardResponseFromJSON,
+    DashboardResponseToJSON,
     DealFromJSON,
     DealToJSON,
     DealListResponseFromJSON,
@@ -48,19 +51,21 @@ import {
 
 export interface CreateDealOperationRequest {
     xSuiAddress: string;
-    xSuiSignature: string;
     createDealRequest: CreateDealRequest;
 }
 
 export interface GetDealRequest {
     xSuiAddress: string;
-    xSuiSignature: string;
+    dealId: string;
+}
+
+export interface GetDealDashboardRequest {
+    xSuiAddress: string;
     dealId: string;
 }
 
 export interface ListDealsRequest {
     xSuiAddress: string;
-    xSuiSignature: string;
     role?: ListDealsRoleEnum;
     status?: ListDealsStatusEnum;
     limit?: number;
@@ -75,10 +80,9 @@ export interface ListDealsRequest {
  */
 export interface DealManagementApiInterface {
     /**
-     * **Purpose**: Create a new M&A earn-out deal on the Sui blockchain  **Business Logic**: - Creates on-chain Deal object via Move contract - Stores metadata in local database for faster queries - Initializes empty periods array (periods added via parameters endpoint) - Returns unsigned transaction for user to sign with wallet  **Sui Integration**: - Writes: Creates new Deal object via `earnout::create_deal()` - Transaction: Returns unsigned transaction for frontend to sign - Events: Emits `DealCreated` event on-chain with dealId - Gas: Estimated ~1,000,000 MIST  **Seal Integration**: - Creates corresponding Seal policy for this deal - Initializes access control: buyer can read/write, seller/auditor can read  **Access Control**: - Role: Buyer/Acquirer Admin only - Verification: Checks that userAddress will be set as buyer 
+     * **Purpose**: Create a new M&A earn-out deal on the Sui blockchain  **Business Logic**: - Creates on-chain Deal object via Move contract - Stores metadata in local database for faster queries - Initializes empty periods array (periods added via parameters endpoint) - Returns unsigned transaction for user to sign with wallet  **Sui Integration**: - Writes: Creates new Deal object via `earnout::create_deal()` - Transaction: Returns unsigned transaction for frontend to sign - Events: Emits `DealCreated` event on-chain with dealId - Gas: Estimated ~1,000,000 MIST  **Seal Integration**: - Creates corresponding Seal policy for this deal - Initializes access control: buyer can read/write, seller/auditor can read  **Authentication**: Level 2 (Write) - Requires: `X-Sui-Address` header only - API returns unsigned transaction bytes - User signs transaction in wallet (this is where authentication happens) - Transaction is executed on-chain with signature verification - Move contract enforces that sender is the buyer  **Security Flow**: 1. API validates address format and request data 2. API builds unsigned transaction calling `earnout::create_deal()` 3. Frontend receives transaction bytes 4. User signs transaction in wallet 5. Transaction executes on-chain - blockchain verifies signature 
      * @summary Create a new earn-out deal
      * @param {string} xSuiAddress Sui wallet address (must be buyer)
-     * @param {string} xSuiSignature Signature proving ownership
      * @param {CreateDealRequest} createDealRequest 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -87,16 +91,15 @@ export interface DealManagementApiInterface {
     createDealRaw(requestParameters: CreateDealOperationRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateDealResponse>>;
 
     /**
-     * **Purpose**: Create a new M&A earn-out deal on the Sui blockchain  **Business Logic**: - Creates on-chain Deal object via Move contract - Stores metadata in local database for faster queries - Initializes empty periods array (periods added via parameters endpoint) - Returns unsigned transaction for user to sign with wallet  **Sui Integration**: - Writes: Creates new Deal object via `earnout::create_deal()` - Transaction: Returns unsigned transaction for frontend to sign - Events: Emits `DealCreated` event on-chain with dealId - Gas: Estimated ~1,000,000 MIST  **Seal Integration**: - Creates corresponding Seal policy for this deal - Initializes access control: buyer can read/write, seller/auditor can read  **Access Control**: - Role: Buyer/Acquirer Admin only - Verification: Checks that userAddress will be set as buyer 
+     * **Purpose**: Create a new M&A earn-out deal on the Sui blockchain  **Business Logic**: - Creates on-chain Deal object via Move contract - Stores metadata in local database for faster queries - Initializes empty periods array (periods added via parameters endpoint) - Returns unsigned transaction for user to sign with wallet  **Sui Integration**: - Writes: Creates new Deal object via `earnout::create_deal()` - Transaction: Returns unsigned transaction for frontend to sign - Events: Emits `DealCreated` event on-chain with dealId - Gas: Estimated ~1,000,000 MIST  **Seal Integration**: - Creates corresponding Seal policy for this deal - Initializes access control: buyer can read/write, seller/auditor can read  **Authentication**: Level 2 (Write) - Requires: `X-Sui-Address` header only - API returns unsigned transaction bytes - User signs transaction in wallet (this is where authentication happens) - Transaction is executed on-chain with signature verification - Move contract enforces that sender is the buyer  **Security Flow**: 1. API validates address format and request data 2. API builds unsigned transaction calling `earnout::create_deal()` 3. Frontend receives transaction bytes 4. User signs transaction in wallet 5. Transaction executes on-chain - blockchain verifies signature 
      * Create a new earn-out deal
      */
     createDeal(requestParameters: CreateDealOperationRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateDealResponse>;
 
     /**
-     * **Purpose**: Retrieve complete details of an earn-out deal  **Business Logic**: - Fetches Deal object from Sui blockchain - Combines with off-chain metadata for enriched response - Includes all periods, roles, and current status - Verifies user has access to this deal  **Sui Integration**: - Reads: Fetches Deal object by dealId - Reads: Fetches all Period objects for this deal - Events: Recent events for activity timeline - Caching: Cached for 60 seconds (invalidated on updates)  **Access Control**: - Role: Buyer, Seller, or Auditor of this deal - Verification: Checks user address matches one of the roles 
+     * **Purpose**: Retrieve complete details of an earn-out deal  **Business Logic**: - Fetches Deal object from Sui blockchain - Combines with off-chain metadata for enriched response - Includes all periods, roles, and current status - Verifies user has access to this deal  **Sui Integration**: - Reads: Fetches Deal object by dealId - Reads: Fetches all Period objects for this deal - Events: Recent events for activity timeline - Caching: Cached for 60 seconds (invalidated on updates)  **Authentication**: Level 1 (Read) - Requires: `X-Sui-Address` header only - No signature required - Backend verifies user is buyer, seller, or auditor of this deal - Returns 403 if user is not a participant 
      * @summary Get detailed information about a specific deal
      * @param {string} xSuiAddress Sui wallet address
-     * @param {string} xSuiSignature Signature proving ownership
      * @param {string} dealId Sui object ID of the deal
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -105,16 +108,32 @@ export interface DealManagementApiInterface {
     getDealRaw(requestParameters: GetDealRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Deal>>;
 
     /**
-     * **Purpose**: Retrieve complete details of an earn-out deal  **Business Logic**: - Fetches Deal object from Sui blockchain - Combines with off-chain metadata for enriched response - Includes all periods, roles, and current status - Verifies user has access to this deal  **Sui Integration**: - Reads: Fetches Deal object by dealId - Reads: Fetches all Period objects for this deal - Events: Recent events for activity timeline - Caching: Cached for 60 seconds (invalidated on updates)  **Access Control**: - Role: Buyer, Seller, or Auditor of this deal - Verification: Checks user address matches one of the roles 
+     * **Purpose**: Retrieve complete details of an earn-out deal  **Business Logic**: - Fetches Deal object from Sui blockchain - Combines with off-chain metadata for enriched response - Includes all periods, roles, and current status - Verifies user has access to this deal  **Sui Integration**: - Reads: Fetches Deal object by dealId - Reads: Fetches all Period objects for this deal - Events: Recent events for activity timeline - Caching: Cached for 60 seconds (invalidated on updates)  **Authentication**: Level 1 (Read) - Requires: `X-Sui-Address` header only - No signature required - Backend verifies user is buyer, seller, or auditor of this deal - Returns 403 if user is not a participant 
      * Get detailed information about a specific deal
      */
     getDeal(requestParameters: GetDealRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Deal>;
 
     /**
-     * **Purpose**: Retrieve all earn-out deals where the current user has a role (buyer, seller, or auditor)  **Business Logic**: - Queries Sui blockchain for all deals where userAddress is buyer, seller, or auditor - Aggregates with off-chain metadata for faster response - Returns paginated list sorted by last activity - Includes summary statistics for each deal  **Sui Integration**: - Reads: Queries Deal objects on Sui where user has role - Events: Reads recent events to determine last activity - Caching: Results cached for 30 seconds  **Access Control**: - Role: Any authenticated user - Authentication: Requires X-Sui-Address and X-Sui-Signature headers 
+     * **Purpose**: Get comprehensive dashboard view for a deal including periods summary, health metrics, and recent events  **Business Logic**: - Aggregates deal information from Sui blockchain - Provides periods summary with data upload progress and KPI/settlement status - Provides health metrics and risk indicators - Shows recent activity timeline  **Sui Integration**: - Reads: Deal object from blockchain - Reads: All Period objects for period-specific data - Events: Recent blockchain events for activity feed - Caching: Results cached for 30 seconds  **Authentication**: Level 1 (Read) - Requires: `X-Sui-Address` header only - No signature required - Backend verifies user is buyer, seller, or auditor - Returns 404 if deal not found or user not authorized  **Security**: - Address-only authentication (frictionless UX) - Backend filters by user role - All data served is from public blockchain (no secrets exposed) 
+     * @summary Get dashboard data for a specific deal
+     * @param {string} xSuiAddress Sui wallet address
+     * @param {string} dealId Sui object ID of the deal
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DealManagementApiInterface
+     */
+    getDealDashboardRaw(requestParameters: GetDealDashboardRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DashboardResponse>>;
+
+    /**
+     * **Purpose**: Get comprehensive dashboard view for a deal including periods summary, health metrics, and recent events  **Business Logic**: - Aggregates deal information from Sui blockchain - Provides periods summary with data upload progress and KPI/settlement status - Provides health metrics and risk indicators - Shows recent activity timeline  **Sui Integration**: - Reads: Deal object from blockchain - Reads: All Period objects for period-specific data - Events: Recent blockchain events for activity feed - Caching: Results cached for 30 seconds  **Authentication**: Level 1 (Read) - Requires: `X-Sui-Address` header only - No signature required - Backend verifies user is buyer, seller, or auditor - Returns 404 if deal not found or user not authorized  **Security**: - Address-only authentication (frictionless UX) - Backend filters by user role - All data served is from public blockchain (no secrets exposed) 
+     * Get dashboard data for a specific deal
+     */
+    getDealDashboard(requestParameters: GetDealDashboardRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DashboardResponse>;
+
+    /**
+     * **Purpose**: Retrieve all earn-out deals where the current user has a role (buyer, seller, or auditor)  **Business Logic**: - Queries Sui blockchain for all deals where userAddress is buyer, seller, or auditor - Aggregates with off-chain metadata for faster response - Returns paginated list sorted by last activity - Includes summary statistics for each deal  **Sui Integration**: - Reads: Queries Deal objects on Sui where user has role - Events: Reads recent events to determine last activity - Caching: Results cached for 30 seconds  **Authentication**: Level 1 (Read) - Requires: `X-Sui-Address` header only - No signature required - provides frictionless browsing - Backend filters results to only show deals where user has a role 
      * @summary List all deals for current user
      * @param {string} xSuiAddress Sui wallet address of the user
-     * @param {string} xSuiSignature Signature proving ownership of the address
      * @param {'buyer' | 'seller' | 'auditor'} [role] Filter by user\&#39;s role in deals
      * @param {'draft' | 'active' | 'completed' | 'cancelled'} [status] Filter by deal status
      * @param {number} [limit] Maximum number of deals to return
@@ -126,7 +145,7 @@ export interface DealManagementApiInterface {
     listDealsRaw(requestParameters: ListDealsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DealListResponse>>;
 
     /**
-     * **Purpose**: Retrieve all earn-out deals where the current user has a role (buyer, seller, or auditor)  **Business Logic**: - Queries Sui blockchain for all deals where userAddress is buyer, seller, or auditor - Aggregates with off-chain metadata for faster response - Returns paginated list sorted by last activity - Includes summary statistics for each deal  **Sui Integration**: - Reads: Queries Deal objects on Sui where user has role - Events: Reads recent events to determine last activity - Caching: Results cached for 30 seconds  **Access Control**: - Role: Any authenticated user - Authentication: Requires X-Sui-Address and X-Sui-Signature headers 
+     * **Purpose**: Retrieve all earn-out deals where the current user has a role (buyer, seller, or auditor)  **Business Logic**: - Queries Sui blockchain for all deals where userAddress is buyer, seller, or auditor - Aggregates with off-chain metadata for faster response - Returns paginated list sorted by last activity - Includes summary statistics for each deal  **Sui Integration**: - Reads: Queries Deal objects on Sui where user has role - Events: Reads recent events to determine last activity - Caching: Results cached for 30 seconds  **Authentication**: Level 1 (Read) - Requires: `X-Sui-Address` header only - No signature required - provides frictionless browsing - Backend filters results to only show deals where user has a role 
      * List all deals for current user
      */
     listDeals(requestParameters: ListDealsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DealListResponse>;
@@ -139,16 +158,12 @@ export interface DealManagementApiInterface {
 export class DealManagementApi extends runtime.BaseAPI implements DealManagementApiInterface {
 
     /**
-     * **Purpose**: Create a new M&A earn-out deal on the Sui blockchain  **Business Logic**: - Creates on-chain Deal object via Move contract - Stores metadata in local database for faster queries - Initializes empty periods array (periods added via parameters endpoint) - Returns unsigned transaction for user to sign with wallet  **Sui Integration**: - Writes: Creates new Deal object via `earnout::create_deal()` - Transaction: Returns unsigned transaction for frontend to sign - Events: Emits `DealCreated` event on-chain with dealId - Gas: Estimated ~1,000,000 MIST  **Seal Integration**: - Creates corresponding Seal policy for this deal - Initializes access control: buyer can read/write, seller/auditor can read  **Access Control**: - Role: Buyer/Acquirer Admin only - Verification: Checks that userAddress will be set as buyer 
+     * **Purpose**: Create a new M&A earn-out deal on the Sui blockchain  **Business Logic**: - Creates on-chain Deal object via Move contract - Stores metadata in local database for faster queries - Initializes empty periods array (periods added via parameters endpoint) - Returns unsigned transaction for user to sign with wallet  **Sui Integration**: - Writes: Creates new Deal object via `earnout::create_deal()` - Transaction: Returns unsigned transaction for frontend to sign - Events: Emits `DealCreated` event on-chain with dealId - Gas: Estimated ~1,000,000 MIST  **Seal Integration**: - Creates corresponding Seal policy for this deal - Initializes access control: buyer can read/write, seller/auditor can read  **Authentication**: Level 2 (Write) - Requires: `X-Sui-Address` header only - API returns unsigned transaction bytes - User signs transaction in wallet (this is where authentication happens) - Transaction is executed on-chain with signature verification - Move contract enforces that sender is the buyer  **Security Flow**: 1. API validates address format and request data 2. API builds unsigned transaction calling `earnout::create_deal()` 3. Frontend receives transaction bytes 4. User signs transaction in wallet 5. Transaction executes on-chain - blockchain verifies signature 
      * Create a new earn-out deal
      */
     async createDealRaw(requestParameters: CreateDealOperationRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreateDealResponse>> {
         if (requestParameters.xSuiAddress === null || requestParameters.xSuiAddress === undefined) {
             throw new runtime.RequiredError('xSuiAddress','Required parameter requestParameters.xSuiAddress was null or undefined when calling createDeal.');
-        }
-
-        if (requestParameters.xSuiSignature === null || requestParameters.xSuiSignature === undefined) {
-            throw new runtime.RequiredError('xSuiSignature','Required parameter requestParameters.xSuiSignature was null or undefined when calling createDeal.');
         }
 
         if (requestParameters.createDealRequest === null || requestParameters.createDealRequest === undefined) {
@@ -165,20 +180,8 @@ export class DealManagementApi extends runtime.BaseAPI implements DealManagement
             headerParameters['X-Sui-Address'] = String(requestParameters.xSuiAddress);
         }
 
-        if (requestParameters.xSuiSignature !== undefined && requestParameters.xSuiSignature !== null) {
-            headerParameters['X-Sui-Signature'] = String(requestParameters.xSuiSignature);
-        }
-
         if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Sui-Signature-Message"] = this.configuration.apiKey("X-Sui-Signature-Message"); // SuiSignatureMessage authentication
-        }
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Sui-Signature"] = this.configuration.apiKey("X-Sui-Signature"); // SuiSignature authentication
-        }
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Sui-Address"] = this.configuration.apiKey("X-Sui-Address"); // SuiWalletAuth authentication
+            headerParameters["X-Sui-Address"] = this.configuration.apiKey("X-Sui-Address"); // Level2Auth authentication
         }
 
         const response = await this.request({
@@ -193,7 +196,7 @@ export class DealManagementApi extends runtime.BaseAPI implements DealManagement
     }
 
     /**
-     * **Purpose**: Create a new M&A earn-out deal on the Sui blockchain  **Business Logic**: - Creates on-chain Deal object via Move contract - Stores metadata in local database for faster queries - Initializes empty periods array (periods added via parameters endpoint) - Returns unsigned transaction for user to sign with wallet  **Sui Integration**: - Writes: Creates new Deal object via `earnout::create_deal()` - Transaction: Returns unsigned transaction for frontend to sign - Events: Emits `DealCreated` event on-chain with dealId - Gas: Estimated ~1,000,000 MIST  **Seal Integration**: - Creates corresponding Seal policy for this deal - Initializes access control: buyer can read/write, seller/auditor can read  **Access Control**: - Role: Buyer/Acquirer Admin only - Verification: Checks that userAddress will be set as buyer 
+     * **Purpose**: Create a new M&A earn-out deal on the Sui blockchain  **Business Logic**: - Creates on-chain Deal object via Move contract - Stores metadata in local database for faster queries - Initializes empty periods array (periods added via parameters endpoint) - Returns unsigned transaction for user to sign with wallet  **Sui Integration**: - Writes: Creates new Deal object via `earnout::create_deal()` - Transaction: Returns unsigned transaction for frontend to sign - Events: Emits `DealCreated` event on-chain with dealId - Gas: Estimated ~1,000,000 MIST  **Seal Integration**: - Creates corresponding Seal policy for this deal - Initializes access control: buyer can read/write, seller/auditor can read  **Authentication**: Level 2 (Write) - Requires: `X-Sui-Address` header only - API returns unsigned transaction bytes - User signs transaction in wallet (this is where authentication happens) - Transaction is executed on-chain with signature verification - Move contract enforces that sender is the buyer  **Security Flow**: 1. API validates address format and request data 2. API builds unsigned transaction calling `earnout::create_deal()` 3. Frontend receives transaction bytes 4. User signs transaction in wallet 5. Transaction executes on-chain - blockchain verifies signature 
      * Create a new earn-out deal
      */
     async createDeal(requestParameters: CreateDealOperationRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreateDealResponse> {
@@ -202,16 +205,12 @@ export class DealManagementApi extends runtime.BaseAPI implements DealManagement
     }
 
     /**
-     * **Purpose**: Retrieve complete details of an earn-out deal  **Business Logic**: - Fetches Deal object from Sui blockchain - Combines with off-chain metadata for enriched response - Includes all periods, roles, and current status - Verifies user has access to this deal  **Sui Integration**: - Reads: Fetches Deal object by dealId - Reads: Fetches all Period objects for this deal - Events: Recent events for activity timeline - Caching: Cached for 60 seconds (invalidated on updates)  **Access Control**: - Role: Buyer, Seller, or Auditor of this deal - Verification: Checks user address matches one of the roles 
+     * **Purpose**: Retrieve complete details of an earn-out deal  **Business Logic**: - Fetches Deal object from Sui blockchain - Combines with off-chain metadata for enriched response - Includes all periods, roles, and current status - Verifies user has access to this deal  **Sui Integration**: - Reads: Fetches Deal object by dealId - Reads: Fetches all Period objects for this deal - Events: Recent events for activity timeline - Caching: Cached for 60 seconds (invalidated on updates)  **Authentication**: Level 1 (Read) - Requires: `X-Sui-Address` header only - No signature required - Backend verifies user is buyer, seller, or auditor of this deal - Returns 403 if user is not a participant 
      * Get detailed information about a specific deal
      */
     async getDealRaw(requestParameters: GetDealRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Deal>> {
         if (requestParameters.xSuiAddress === null || requestParameters.xSuiAddress === undefined) {
             throw new runtime.RequiredError('xSuiAddress','Required parameter requestParameters.xSuiAddress was null or undefined when calling getDeal.');
-        }
-
-        if (requestParameters.xSuiSignature === null || requestParameters.xSuiSignature === undefined) {
-            throw new runtime.RequiredError('xSuiSignature','Required parameter requestParameters.xSuiSignature was null or undefined when calling getDeal.');
         }
 
         if (requestParameters.dealId === null || requestParameters.dealId === undefined) {
@@ -226,20 +225,8 @@ export class DealManagementApi extends runtime.BaseAPI implements DealManagement
             headerParameters['X-Sui-Address'] = String(requestParameters.xSuiAddress);
         }
 
-        if (requestParameters.xSuiSignature !== undefined && requestParameters.xSuiSignature !== null) {
-            headerParameters['X-Sui-Signature'] = String(requestParameters.xSuiSignature);
-        }
-
         if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Sui-Signature-Message"] = this.configuration.apiKey("X-Sui-Signature-Message"); // SuiSignatureMessage authentication
-        }
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Sui-Signature"] = this.configuration.apiKey("X-Sui-Signature"); // SuiSignature authentication
-        }
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Sui-Address"] = this.configuration.apiKey("X-Sui-Address"); // SuiWalletAuth authentication
+            headerParameters["X-Sui-Address"] = this.configuration.apiKey("X-Sui-Address"); // Level1Auth authentication
         }
 
         const response = await this.request({
@@ -253,7 +240,7 @@ export class DealManagementApi extends runtime.BaseAPI implements DealManagement
     }
 
     /**
-     * **Purpose**: Retrieve complete details of an earn-out deal  **Business Logic**: - Fetches Deal object from Sui blockchain - Combines with off-chain metadata for enriched response - Includes all periods, roles, and current status - Verifies user has access to this deal  **Sui Integration**: - Reads: Fetches Deal object by dealId - Reads: Fetches all Period objects for this deal - Events: Recent events for activity timeline - Caching: Cached for 60 seconds (invalidated on updates)  **Access Control**: - Role: Buyer, Seller, or Auditor of this deal - Verification: Checks user address matches one of the roles 
+     * **Purpose**: Retrieve complete details of an earn-out deal  **Business Logic**: - Fetches Deal object from Sui blockchain - Combines with off-chain metadata for enriched response - Includes all periods, roles, and current status - Verifies user has access to this deal  **Sui Integration**: - Reads: Fetches Deal object by dealId - Reads: Fetches all Period objects for this deal - Events: Recent events for activity timeline - Caching: Cached for 60 seconds (invalidated on updates)  **Authentication**: Level 1 (Read) - Requires: `X-Sui-Address` header only - No signature required - Backend verifies user is buyer, seller, or auditor of this deal - Returns 403 if user is not a participant 
      * Get detailed information about a specific deal
      */
     async getDeal(requestParameters: GetDealRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Deal> {
@@ -262,16 +249,56 @@ export class DealManagementApi extends runtime.BaseAPI implements DealManagement
     }
 
     /**
-     * **Purpose**: Retrieve all earn-out deals where the current user has a role (buyer, seller, or auditor)  **Business Logic**: - Queries Sui blockchain for all deals where userAddress is buyer, seller, or auditor - Aggregates with off-chain metadata for faster response - Returns paginated list sorted by last activity - Includes summary statistics for each deal  **Sui Integration**: - Reads: Queries Deal objects on Sui where user has role - Events: Reads recent events to determine last activity - Caching: Results cached for 30 seconds  **Access Control**: - Role: Any authenticated user - Authentication: Requires X-Sui-Address and X-Sui-Signature headers 
+     * **Purpose**: Get comprehensive dashboard view for a deal including periods summary, health metrics, and recent events  **Business Logic**: - Aggregates deal information from Sui blockchain - Provides periods summary with data upload progress and KPI/settlement status - Provides health metrics and risk indicators - Shows recent activity timeline  **Sui Integration**: - Reads: Deal object from blockchain - Reads: All Period objects for period-specific data - Events: Recent blockchain events for activity feed - Caching: Results cached for 30 seconds  **Authentication**: Level 1 (Read) - Requires: `X-Sui-Address` header only - No signature required - Backend verifies user is buyer, seller, or auditor - Returns 404 if deal not found or user not authorized  **Security**: - Address-only authentication (frictionless UX) - Backend filters by user role - All data served is from public blockchain (no secrets exposed) 
+     * Get dashboard data for a specific deal
+     */
+    async getDealDashboardRaw(requestParameters: GetDealDashboardRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DashboardResponse>> {
+        if (requestParameters.xSuiAddress === null || requestParameters.xSuiAddress === undefined) {
+            throw new runtime.RequiredError('xSuiAddress','Required parameter requestParameters.xSuiAddress was null or undefined when calling getDealDashboard.');
+        }
+
+        if (requestParameters.dealId === null || requestParameters.dealId === undefined) {
+            throw new runtime.RequiredError('dealId','Required parameter requestParameters.dealId was null or undefined when calling getDealDashboard.');
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (requestParameters.xSuiAddress !== undefined && requestParameters.xSuiAddress !== null) {
+            headerParameters['X-Sui-Address'] = String(requestParameters.xSuiAddress);
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Sui-Address"] = this.configuration.apiKey("X-Sui-Address"); // Level1Auth authentication
+        }
+
+        const response = await this.request({
+            path: `/deals/{dealId}/dashboard`.replace(`{${"dealId"}}`, encodeURIComponent(String(requestParameters.dealId))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DashboardResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * **Purpose**: Get comprehensive dashboard view for a deal including periods summary, health metrics, and recent events  **Business Logic**: - Aggregates deal information from Sui blockchain - Provides periods summary with data upload progress and KPI/settlement status - Provides health metrics and risk indicators - Shows recent activity timeline  **Sui Integration**: - Reads: Deal object from blockchain - Reads: All Period objects for period-specific data - Events: Recent blockchain events for activity feed - Caching: Results cached for 30 seconds  **Authentication**: Level 1 (Read) - Requires: `X-Sui-Address` header only - No signature required - Backend verifies user is buyer, seller, or auditor - Returns 404 if deal not found or user not authorized  **Security**: - Address-only authentication (frictionless UX) - Backend filters by user role - All data served is from public blockchain (no secrets exposed) 
+     * Get dashboard data for a specific deal
+     */
+    async getDealDashboard(requestParameters: GetDealDashboardRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DashboardResponse> {
+        const response = await this.getDealDashboardRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * **Purpose**: Retrieve all earn-out deals where the current user has a role (buyer, seller, or auditor)  **Business Logic**: - Queries Sui blockchain for all deals where userAddress is buyer, seller, or auditor - Aggregates with off-chain metadata for faster response - Returns paginated list sorted by last activity - Includes summary statistics for each deal  **Sui Integration**: - Reads: Queries Deal objects on Sui where user has role - Events: Reads recent events to determine last activity - Caching: Results cached for 30 seconds  **Authentication**: Level 1 (Read) - Requires: `X-Sui-Address` header only - No signature required - provides frictionless browsing - Backend filters results to only show deals where user has a role 
      * List all deals for current user
      */
     async listDealsRaw(requestParameters: ListDealsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DealListResponse>> {
         if (requestParameters.xSuiAddress === null || requestParameters.xSuiAddress === undefined) {
             throw new runtime.RequiredError('xSuiAddress','Required parameter requestParameters.xSuiAddress was null or undefined when calling listDeals.');
-        }
-
-        if (requestParameters.xSuiSignature === null || requestParameters.xSuiSignature === undefined) {
-            throw new runtime.RequiredError('xSuiSignature','Required parameter requestParameters.xSuiSignature was null or undefined when calling listDeals.');
         }
 
         const queryParameters: any = {};
@@ -298,20 +325,8 @@ export class DealManagementApi extends runtime.BaseAPI implements DealManagement
             headerParameters['X-Sui-Address'] = String(requestParameters.xSuiAddress);
         }
 
-        if (requestParameters.xSuiSignature !== undefined && requestParameters.xSuiSignature !== null) {
-            headerParameters['X-Sui-Signature'] = String(requestParameters.xSuiSignature);
-        }
-
         if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Sui-Signature-Message"] = this.configuration.apiKey("X-Sui-Signature-Message"); // SuiSignatureMessage authentication
-        }
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Sui-Signature"] = this.configuration.apiKey("X-Sui-Signature"); // SuiSignature authentication
-        }
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Sui-Address"] = this.configuration.apiKey("X-Sui-Address"); // SuiWalletAuth authentication
+            headerParameters["X-Sui-Address"] = this.configuration.apiKey("X-Sui-Address"); // Level1Auth authentication
         }
 
         const response = await this.request({
@@ -325,7 +340,7 @@ export class DealManagementApi extends runtime.BaseAPI implements DealManagement
     }
 
     /**
-     * **Purpose**: Retrieve all earn-out deals where the current user has a role (buyer, seller, or auditor)  **Business Logic**: - Queries Sui blockchain for all deals where userAddress is buyer, seller, or auditor - Aggregates with off-chain metadata for faster response - Returns paginated list sorted by last activity - Includes summary statistics for each deal  **Sui Integration**: - Reads: Queries Deal objects on Sui where user has role - Events: Reads recent events to determine last activity - Caching: Results cached for 30 seconds  **Access Control**: - Role: Any authenticated user - Authentication: Requires X-Sui-Address and X-Sui-Signature headers 
+     * **Purpose**: Retrieve all earn-out deals where the current user has a role (buyer, seller, or auditor)  **Business Logic**: - Queries Sui blockchain for all deals where userAddress is buyer, seller, or auditor - Aggregates with off-chain metadata for faster response - Returns paginated list sorted by last activity - Includes summary statistics for each deal  **Sui Integration**: - Reads: Queries Deal objects on Sui where user has role - Events: Reads recent events to determine last activity - Caching: Results cached for 30 seconds  **Authentication**: Level 1 (Read) - Requires: `X-Sui-Address` header only - No signature required - provides frictionless browsing - Backend filters results to only show deals where user has a role 
      * List all deals for current user
      */
     async listDeals(requestParameters: ListDealsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DealListResponse> {

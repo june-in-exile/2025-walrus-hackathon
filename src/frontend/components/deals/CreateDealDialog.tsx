@@ -33,7 +33,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { useCreateDeal } from '@/src/frontend/hooks/useDeals';
+import { useCreateDeal } from '@/src/frontend/hooks/useCreateDeal';
 import { useCurrentAccount } from '@mysten/dapp-kit';
 import { Loader2, Plus } from 'lucide-react';
 
@@ -76,31 +76,10 @@ export function CreateDealDialog({ children }: CreateDealDialogProps) {
       return;
     }
 
-    try {
-      const result = await createDeal.mutateAsync({
-        name: data.name,
-        closingDate: new Date(data.closingDate) as any,
-        currency: data.currency,
-        buyerAddress: currentAccount.address,
-        sellerAddress: data.sellerAddress,
-        auditorAddress: data.auditorAddress,
-        metadata: data.notes ? { notes: data.notes } : undefined,
-      });
-
-      // Close dialog and reset form
-      setOpen(false);
-      form.reset();
-
-      toast.success('Deal created successfully!');
-
-      // Navigate to the new deal's dashboard
-      if (result.deal.dealId) {
-        router.push(`/deals/${result.deal.dealId}`);
-      }
-    } catch (error) {
-      console.error('Failed to create deal:', error);
-      toast.error('Failed to create deal. Please try again.');
-    }
+    // This dialog uses a simplified form that doesn't collect all required parameters.
+    // Redirect to the full create deal page instead.
+    toast.info('Redirecting to full deal creation form...');
+    router.push('/deals/create');
   };
 
   return (
@@ -265,12 +244,12 @@ export function CreateDealDialog({ children }: CreateDealDialogProps) {
                 type="button"
                 variant="outline"
                 onClick={() => setOpen(false)}
-                disabled={createDeal.isPending}
+                disabled={createDeal.isCreating}
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={createDeal.isPending}>
-                {createDeal.isPending && (
+              <Button type="submit" disabled={createDeal.isCreating}>
+                {createDeal.isCreating && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
                 Create Deal

@@ -56,7 +56,7 @@ export function DealCard({ deal }: DealCardProps) {
           <div className="text-right text-sm text-muted-foreground">
             <div className="flex items-center gap-1">
               <Calendar className="h-3 w-3" />
-              {formatDate(deal.closingDate)}
+              {formatDate(deal.agreementDate)}
             </div>
           </div>
         </div>
@@ -80,7 +80,7 @@ export function DealCard({ deal }: DealCardProps) {
             </div>
             <div>
               <div className="text-2xl font-bold">
-                {deal.currency}
+                {deal.currency || 'N/A'}
               </div>
               <div className="text-xs text-muted-foreground">Currency</div>
             </div>

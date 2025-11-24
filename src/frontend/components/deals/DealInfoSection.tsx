@@ -69,9 +69,9 @@ export function DealInfoSection({ dealInfo }: DealInfoSectionProps) {
           <div className="flex items-start gap-3">
             <Calendar className="h-5 w-5 text-muted-foreground mt-0.5" />
             <div className="flex-1">
-              <div className="text-sm font-medium">Closing Date</div>
+              <div className="text-sm font-medium">Agreement Date</div>
               <div className="text-sm text-muted-foreground">
-                {formatDate(dealInfo.closingDate)}
+                {formatDate(dealInfo.agreementDate)}
               </div>
             </div>
           </div>
@@ -80,7 +80,7 @@ export function DealInfoSection({ dealInfo }: DealInfoSectionProps) {
             <DollarSign className="h-5 w-5 text-muted-foreground mt-0.5" />
             <div className="flex-1">
               <div className="text-sm font-medium">Currency</div>
-              <div className="text-sm text-muted-foreground">{dealInfo.currency}</div>
+              <div className="text-sm text-muted-foreground">{dealInfo.currency || 'N/A'}</div>
             </div>
           </div>
         </CardContent>

@@ -8,7 +8,7 @@
 
 [Live Demo](https://ma-earnout-2025walrushackathon.vercel.app) | [Video Demo](#) | [Documentation](./docs)
 
-*Built for [2025 Walrus Hackathon](https://walrus.site)*
+_Built for [2025 Walrus Hackathon](https://walrus.site)_
 
 </div>
 
@@ -24,6 +24,7 @@ In traditional M&A (Mergers & Acquisitions) transactions, **earn-out agreements*
 - **High Costs**: Legal and auditing fees consume 10-15% of earn-out value
 
 **Example**: A $30M earn-out payment contingent on $900K revenue often results in:
+
 - Buyer provides opaque financial reports
 - Seller disputes the calculations
 - 6-12 months of legal negotiations
@@ -43,15 +44,16 @@ A **trustless earn-out protocol** where:
 
 **Walrus is central to our architecture**, not peripheral:
 
-| Feature | Traditional Solution | Our Solution with Walrus |
-|---------|---------------------|--------------------------|
-| **Data Storage** | Centralized servers (AWS/Azure) - single point of failure | Decentralized storage on Walrus - censorship-resistant |
-| **Data Privacy** | Encrypted at rest, but cloud provider has access | Seal encryption - only authorized roles can decrypt |
-| **Data Integrity** | Trust the database - no proof of tampering | Immutable blob IDs registered on-chain |
-| **Availability** | 99.9% SLA, subject to provider policies | Byzantine fault-tolerant storage network |
-| **Censorship** | Can be seized, blocked, or deleted | No single entity controls access |
+| Feature            | Traditional Solution                                      | Our Solution with Walrus                               |
+| ------------------ | --------------------------------------------------------- | ------------------------------------------------------ |
+| **Data Storage**   | Centralized servers (AWS/Azure) - single point of failure | Decentralized storage on Walrus - censorship-resistant |
+| **Data Privacy**   | Encrypted at rest, but cloud provider has access          | Seal encryption - only authorized roles can decrypt    |
+| **Data Integrity** | Trust the database - no proof of tampering                | Immutable blob IDs registered on-chain                 |
+| **Availability**   | 99.9% SLA, subject to provider policies                   | Byzantine fault-tolerant storage network               |
+| **Censorship**     | Can be seized, blocked, or deleted                        | No single entity controls access                       |
 
 **Walrus enables**:
+
 - **Decentralized document repository** that no single party controls
 - **Verifiable data integrity** via on-chain blob ID registration
 - **Scalable storage** for large financial datasets (reports, invoices, contracts)
@@ -60,68 +62,125 @@ A **trustless earn-out protocol** where:
 ## 🏗️ Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Frontend (Next.js)                       │
-│                    Sui Wallet Integration                        │
-└──────────────┬────────────────────────────────┬─────────────────┘
-               │                                │
-               ▼                                ▼
-    ┌──────────────────┐              ┌──────────────────┐
-    │  Sui Blockchain  │              │ Walrus Storage   │
-    │                  │              │                  │
-    │ • Deal Contracts │◄─────────────┤ • Financial Docs │
-    │ • Access Control │   Blob IDs   │ • Seal Encrypted │
-    │ • KPI Registry   │              │ • Decentralized  │
-    └──────────────────┘              └──────────────────┘
-               │                                ▲
-               │                                │
-               ▼                                │
-    ┌──────────────────┐              ┌──────────────────┐
-    │  Nautilus TEE    │              │   Seal Service   │
-    │                  │              │                  │
-    │ • KPI Calculator │──────────────► • Role-based     │
-    │ • Ed25519 Signer │   Decrypt    │   Encryption     │
-    │ • Attestation    │              │ • Policy Control │
-    └──────────────────┘              └──────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                      📱 Frontend Layer (Next.js)                     │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌────────────────────┐  │
+│  │   Sui Wallet     │  │   Seal Client    │  │    Walrus SDK      │  │
+│  │   (@mysten/      │  │   (Encryption/   │  │   (Blob Fetch)     │  │
+│  │    dapp-kit)     │  │    Decryption)   │  │                    │  │
+│  └────────┬─────────┘  └────────┬─────────┘  └──────────┬─────────┘  │
+└───────────┼─────────────────────┼───────────────────────┼────────────┘
+            │ Sign TX             │ Encrypt/Decrypt       │ Upload via Relay
+┌───────────┼─────────────────────┼───────────────────────┼───────────┐
+│           │          🔧 Service Layer (Backend API)     │           │
+│           │                     │                       │           │
+│           │                     ▼                       ▼           │
+│           │          ┌──────────────────┐  ┌─────────────────────┐  │
+│           │          │  Seal Key Server │  │   Upload Relay      │  │
+│           │          │  • Key Policy    │  │  • Walrus Publisher │  │
+│           │          │  • Role Check    │  │  • Blob ID Return   │  │
+│           │          └──────────────────┘  └──────────┬──────────┘  │
+└───────────┼───────────────────────────────────────────┼─────────────┘
+            │                                           │ Store Encrypted Blob
+            │                                           ▼
+┌───────────┼───────────────────────────────────────────┼─────────────┐
+│           │            💾 Storage & Blockchain Layer  │             │
+│           │              ┌────────────────────────────┼──────────┐  │
+│           │              │      🌊 Walrus Storage     ▼          │  │
+│           │              │  ┌──────────────────────────────┐     │  │
+│           │              │  │   Encrypted Blobs (Seal)     │     │  │
+│           │              │  │   • Financial Documents      │◄────┤  │
+│           │              │  │   • Invoices, Reports        │     │  │
+│           │              │  │   • Payroll Data             │     │  │
+│           │              │  └──────────────┬───────────────┘     │  │
+│           │              │                 │ Blob IDs            │  │
+│           │              └─────────────────┼─────────────────────┘  │
+│           │                                │ Register Blob IDs      │
+│           ▼                                ▼                        │
+│    ┌──────────────────────────────────────────────────┐             │
+│    │          ⛓️  Sui Blockchain (Move Contracts)     │             │
+│    │                                                  │             │
+│    │  • earnout::create_deal                          │             │
+│    │  • earnout::add_walrus_blob ◄──Submit KPI + Attestation─┐      │
+│    │  • earnout::seal_approve (Access Control)        │      │      │
+│    │  • earnout::audit_data                           │      │      │
+│    │  • earnout::submit_kpi_and_settle                │      │      │
+│    └──────────────────────────────────────────────────┘      │      │
+│    ┌──────────────────────────────────────────────────┐      │      │
+│    │          🔒 Nautilus TEE (Optional)              │      │      │
+│    │                                                  │      │      │
+│    │  • Fetch Encrypted Blobs from Walrus             │      │      │
+│    │  • Decrypt with Seal SDK                         │      │      │
+│    │  • Compute KPI (Tamper-proof)                    │      │      │
+│    │  • Generate Cryptographic Attestation            │──────┘      │
+│    └──────────────────────────────────────────────────┘             │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Data Flow
 
-1. **Deal Creation**: Buyer creates on-chain deal with seller and auditor addresses
-2. **Data Upload**: Buyer encrypts financial docs with Seal → uploads to Walrus → registers blob ID on Sui
-3. **Verification**: Auditor retrieves encrypted blob from Walrus → decrypts with Seal → verifies data
-4. **KPI Calculation**: TEE downloads data from Walrus → computes KPI → generates cryptographic attestation
-5. **Settlement**: Smart contract verifies attestation → transfers funds to seller automatically
+**Deal Creation Flow**:
+
+1. **Buyer** prepares deal parameters (seller address, auditor address, KPI targets, etc.)
+2. **Frontend** → **Backend Relay** → **Walrus** (upload encrypted deal docs)
+3. **Frontend** signs Sui transaction with deal parameters + blob ID
+4. **Sui Blockchain** creates deal contract and stores blob ID (`earnout::create_deal`)
+
+**Financial Data Upload Flow**:
+
+1. **Frontend** encrypts financial docs with Seal SDK (client-side)
+2. **Frontend** → **Backend Relay** → **Walrus** (upload encrypted blob)
+3. **Frontend** signs Sui transaction to register blob ID on-chain
+4. **Sui Blockchain** stores blob ID + metadata in deal contract (`earnout::add_walrus_blob`)
+
+**Download & Verification Flow**:
+
+1. **Frontend** fetches encrypted blob from **Walrus** (via blob ID)
+2. **Frontend** decrypts with Seal SDK (`earnout::seal_approve`)
+3. **Auditor** verifies decrypted data and attests it on-chain
+4. **Smart Contract** updates verification status (`earnout::audit_data`)
+
+**KPI Calculation with TEE**:
+
+1. **Frontend** downloads encrypted blobs from **Walrus**
+2. **Frontend** decrypts data with Seal SDK
+3. **Frontend** sends decrypted data to **Nautilus TEE**
+4. **TEE** computes KPI + generates cryptographic attestation
+5. **Frontend** submits KPI result + attestation to **Sui Blockchain** (`earnout::submit_kpi_and_settle`)
+6. **Smart Contract** verifies attestation → executes settlement (`earnout::verify_nautilus_attestation`)
 
 ## ✨ Key Features
 
 ### For Buyers
+
 - **Transparent Process**: On-chain proof of all financial submissions
 - **Reduced Legal Costs**: Automated KPI verification eliminates disputes
 - **Flexible Reporting**: Upload revenue, expenses, and payroll data monthly
 
 ### For Sellers
+
 - **Real-time Monitoring**: Track KPI progress against targets
 - **Trustless Verification**: Decrypt financial docs anytime without buyer permission
 - **Guaranteed Payment**: Smart contract escrow ensures funds are available
 
 ### For Auditors
+
 - **Immutable Audit Trail**: All data submissions timestamped on-chain
 - **Efficient Workflow**: Download encrypted docs from Walrus, verify, attest KPI
 - **Cryptographic Proof**: Sign attestations with wallet key
 
 ## 🛠️ Tech Stack
 
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| **Blockchain** | Sui Network | Smart contracts, access control, KPI registry |
-| **Storage** | **Walrus Protocol** | Decentralized storage for financial documents |
-| **Encryption** | Mysten Seal | Role-based access control for sensitive data |
-| **TEE** | Nautilus | Trustless KPI computation with attestation |
-| **Smart Contracts** | Sui Move | On-chain deal logic and settlement |
-| **Frontend** | Next.js 16 + React 19 | Web application with wallet integration |
-| **Wallet** | @mysten/dapp-kit | Sui wallet connection and transaction signing |
-| **UI** | Tailwind + shadcn/ui | Responsive, accessible components |
+| Component           | Technology            | Purpose                                       |
+| ------------------- | --------------------- | --------------------------------------------- |
+| **Blockchain**      | Sui Network           | Smart contracts, access control, KPI registry |
+| **Storage**         | **Walrus Protocol**   | Decentralized storage for financial documents |
+| **Encryption**      | Mysten Seal           | Role-based access control for sensitive data  |
+| **TEE**             | Nautilus              | Trustless KPI computation with attestation    |
+| **Smart Contracts** | Sui Move              | On-chain deal logic and settlement            |
+| **Frontend**        | Next.js 16 + React 19 | Web application with wallet integration       |
+| **Wallet**          | @mysten/dapp-kit      | Sui wallet connection and transaction signing |
+| **UI**              | Tailwind + shadcn/ui  | Responsive, accessible components             |
 
 ## 🚀 Quick Start
 
@@ -232,8 +291,8 @@ Instead of storing financial documents on centralized servers, we use **Walrus a
 
 ```typescript
 // Upload to Walrus
-const response = await fetch('/api/v1/walrus/upload', {
-  method: 'POST',
+const response = await fetch("/api/v1/walrus/upload", {
+  method: "POST",
   body: formData,
 });
 const { blobId } = await response.json();
@@ -246,6 +305,7 @@ tx.moveCall({
 ```
 
 **Benefits**:
+
 - **Immutable references**: Blob IDs can't be changed after registration
 - **No single point of failure**: Data survives even if original uploader disappears
 - **Censorship resistance**: No entity can delete or block access to data
@@ -275,9 +335,7 @@ Nautilus TEE retrieves data from Walrus for tamper-proof KPI calculation:
 
 ```typescript
 // TEE fetches encrypted data from Walrus
-const blobs = await Promise.all(
-  blobIds.map(id => fetchFromWalrus(id))
-);
+const blobs = await Promise.all(blobIds.map((id) => fetchFromWalrus(id)));
 
 // TEE decrypts and computes KPI
 const kpi = computeKPI(blobs);
@@ -311,15 +369,17 @@ const attestation = sign(kpi, teePrivateKey); // 144 bytes
 ## 🧪 Smart Contract
 
 Deployed on **Sui Testnet**:
-- **Package ID**: ``
+
+- **Package ID**: [`0x30ca8192f274777941cd23377b6f68cbf6d4b5ab036661532870f9b0088d230a`](https://suiscan.xyz/testnet/object/0x30ca8192f274777941cd23377b6f68cbf6d4b5ab036661532870f9b0088d230a/tx-blocks)
 - **Module**: `earnout`
 
 Key functions:
+
 - `create_deal`: Initialize earn-out agreement
 - `add_walrus_blob`: Register Walrus blob ID on-chain
-- `propose_kpi`: Buyer proposes KPI value
-- `attest_kpi`: Auditor verifies and approves KPI
-- `execute_settlement`: Transfer funds based on attested KPI
+- `seal_approve`: Seal access control - grants decryption rights to buyer/seller/auditor
+- `audit_data`: Auditor verifies and approves blob ID
+- `submit_kpi_and_settle`: Submit KPI result with TEE attestation and execute settlement
 
 See [Contract README](./src/backend/contracts/README.md) for deployment guide.
 
@@ -333,14 +393,6 @@ See [Contract README](./src/backend/contracts/README.md) for deployment guide.
 4. View dashboard with KPI tracking
 5. Execute settlement when KPI target is met
 
-## 🔮 Future Enhancements
-
-- **Multi-TEE Consensus**: Require 2-of-3 TEE nodes to agree on KPI
-- **Advanced KPI Formulas**: Support EBITDA, gross margin, custom metrics
-- **Dispute Resolution**: On-chain arbitration mechanism
-- **Mobile App**: React Native app for on-the-go monitoring
-- **Analytics Dashboard**: Historical KPI trends and forecasting
-
 ## 📄 License
 
 MIT License - see [LICENSE](./LICENSE) for details
@@ -348,6 +400,7 @@ MIT License - see [LICENSE](./LICENSE) for details
 ## 🙏 Acknowledgments
 
 Built with:
+
 - [Walrus Protocol](https://walrus.site) - Decentralized storage
 - [Sui Network](https://sui.io) - High-performance blockchain
 - [Mysten Seal](https://github.com/MystenLabs/seal) - Role-based encryption

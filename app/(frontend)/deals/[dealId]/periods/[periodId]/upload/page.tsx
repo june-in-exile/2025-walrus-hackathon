@@ -46,6 +46,8 @@ import {
   CheckCircle2,
   XCircle,
   AlertCircle,
+  Copy,
+  Check,
 } from 'lucide-react';
 
 const uploadSchema = z.object({
@@ -87,6 +89,7 @@ export default function DocumentsPage() {
   const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [downloadingBlobId, setDownloadingBlobId] = useState<string | null>(null);
+  const [copiedBlobId, setCopiedBlobId] = useState<string | null>(null);
   const [requestChangesModal, setRequestChangesModal] = useState<{
     open: boolean;
     blobId: string;
@@ -193,6 +196,22 @@ export default function DocumentsPage() {
         description: 'Please try again later.',
       });
       throw error;
+    }
+  };
+
+  const handleCopyBlobId = async (blobId: string) => {
+    try {
+      await navigator.clipboard.writeText(blobId);
+      setCopiedBlobId(blobId);
+      toast.success('Blob ID copied to clipboard');
+
+      // Reset copied state after 2 seconds
+      setTimeout(() => {
+        setCopiedBlobId(null);
+      }, 2000);
+    } catch (error) {
+      console.error('Failed to copy:', error);
+      toast.error('Failed to copy Blob ID');
     }
   };
 
@@ -602,9 +621,23 @@ export default function DocumentsPage() {
                                   <p className="text-xs text-muted-foreground mt-1">{blob.metadata.description}</p>
                                 )}
                                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                  <span title={blob.blobId}>
-                                    Blob ID: {blob.blobId.substring(0, 8)}...
-                                  </span>
+                                  <div className="flex items-center gap-1">
+                                    <span title={blob.blobId}>
+                                      Blob ID: {blob.blobId.substring(0, 8)}...
+                                    </span>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-4 w-4 p-0 hover:bg-transparent"
+                                      onClick={() => handleCopyBlobId(blob.blobId)}
+                                    >
+                                      {copiedBlobId === blob.blobId ? (
+                                        <Check className="h-3 w-3 text-green-600" />
+                                      ) : (
+                                        <Copy className="h-3 w-3" />
+                                      )}
+                                    </Button>
+                                  </div>
                                   <span>{formatDate(blob.uploadedAt)}</span>
                                 </div>
                               </div>

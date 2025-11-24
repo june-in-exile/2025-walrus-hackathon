@@ -21,6 +21,8 @@ import {
   AlertCircle,
   Calendar,
   Shield,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { decryptData } from '@/src/frontend/lib/seal';
@@ -44,6 +46,7 @@ export default function DataAuditPage() {
   const suiClient = useSuiClient();
   const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
   const [downloadingBlobId, setDownloadingBlobId] = useState<string | null>(null);
+  const [copiedBlobId, setCopiedBlobId] = useState<string | null>(null);
 
   // Fetch audit records
   const {
@@ -167,6 +170,22 @@ export default function DataAuditPage() {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / 1048576).toFixed(1) + ' MB';
+  };
+
+  const handleCopyBlobId = async (blobId: string) => {
+    try {
+      await navigator.clipboard.writeText(blobId);
+      setCopiedBlobId(blobId);
+      toast.success('Blob ID copied to clipboard');
+
+      // Reset copied state after 2 seconds
+      setTimeout(() => {
+        setCopiedBlobId(null);
+      }, 2000);
+    } catch (error) {
+      console.error('Failed to copy:', error);
+      toast.error('Failed to copy Blob ID');
+    }
   };
 
   const handleAudit = async (record: DealBlobItem) => {
@@ -363,6 +382,23 @@ export default function DataAuditPage() {
                               {record.metadata?.filename || record.dataType || 'Untitled Document'}
                             </p>
                             <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1">
+                              <div className="flex items-center gap-1">
+                                <span title={record.blobId}>
+                                  Blob ID: {record.blobId.substring(0, 8)}...
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-4 w-4 p-0 hover:bg-transparent"
+                                  onClick={() => handleCopyBlobId(record.blobId)}
+                                >
+                                  {copiedBlobId === record.blobId ? (
+                                    <Check className="h-3 w-3 text-green-600" />
+                                  ) : (
+                                    <Copy className="h-3 w-3" />
+                                  )}
+                                </Button>
+                              </div>
                               <span className="capitalize">{record.dataType.replace('_', ' ')}</span>
                               <span>{formatFileSize(record.size ?? 0)}</span>
                               <span>
